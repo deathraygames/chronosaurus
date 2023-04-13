@@ -1,0 +1,37 @@
+{
+  "name": "chronosaurus",
+  "version": "0.1.0",
+  "description": "game for gamedev.js 2023 game jam",
+  "main": "./src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "serve": "npx http-server",
+    "rollup": "rollup --config rollup.config.mjs",
+    "build": "npm run rollup",
+    "watch": "rollup --config rollup.config.mjs -w"
+  },
+  "keywords": [
+    "html5",
+    "esm",
+    "js",
+    "javascript",
+    "game",
+    "three.js"
+  ],
+  "author": "Luke Nickerson",
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^24.0.1",
+    "@rollup/plugin-node-resolve": "^15.0.2",
+    "http-server": "^14.1.1",
+    "rocket-boots-eslint": "github:rocket-boots/rocket-boots-eslint",
+    "rollup": "^3.20.2"
+  },
+  "dependencies": {
+    "howler": "^2.2.3",
+    "keyboard-commander": "github:rocket-boots/keyboard-commander",
+    "rocket-boots-three-toolbox": "github:rocket-boots/rocket-boots-three-toolbox",
+    "rocket-utility-belt": "github:rocket-boots/rocket-utility-belt#v0.1.0",
+    "three": "^0.151.3"
+  }
+}
