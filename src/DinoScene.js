@@ -74,7 +74,7 @@ class DinoScene {
 		// pointLight.lookAt(new Vector3());
 		this.scene.add(pointLight);
 
-		const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+		const ambientLight = new THREE.AmbientLight(0x404040, 0.75);
 		this.scene.add(ambientLight);
 
 		// const sphereSize = 1;
@@ -119,7 +119,7 @@ class DinoScene {
 				const sceneObj = this.entitySceneObjects[entity.entityId];
 				if (sceneObj) {
 					sceneObj.position.copy(DinoScene.convertCoordsToVector3(entity.coords));
-					sceneObj.rotation.set(0, entity.facing, 0);
+					sceneObj.rotation.set(0, 0, -entity.facing);
 					// TODO: see if position or anything else has changed
 				} else {
 					this.addNewWorldEntity(entity);
@@ -156,65 +156,11 @@ class DinoScene {
 
 	makeBox() {
 		const box = new THREE.BoxGeometry(10, 20, 10);
-		const material = new THREE.MeshToonMaterial({ color: 0xff0000, flatShading: true });
+		const material = new THREE.MeshToonMaterial({
+			color: 0xff0000, // flatShading: true
+		});
 		const boxMesh = new THREE.Mesh(box, material);
 		return boxMesh;
-	}
-
-	makeTerrain(heightMap) {
-		const size = this.chunkSize * this.gridSquareSize;
-		console.log(this, size);
-		const geometry = new THREE.PlaneGeometry(size, size, this.terrainSegments, this.terrainSegments);
-		// heightMap.wrapS = THREE.RepeatWrapping;
-		// heightMap.wrapT = THREE.RepeatWrapping;
-
-		// set the height of each vertex based on the color of the corresponding pixel in the heightmap
-		// const vertices = geometry.attributes.position.array;
-		// const imageData = heightMap.image.data;
-		// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 4) {
-		// 	vertices[i] = (imageData[j] + imageData[j + 1] + imageData[j + 2]) / 3;
-		// }
-
-		// const noiseScale = 0.001;
-		// const vertices = geometry.attributes.position.array;
-		// const len = this.terrainSegments ** 2; // vertices.length
-		// for (let i = 0, j = 0, l = len; i < l; i += 3, j += 1) {
-		// 	vertices[i] = 0;
-		// 	vertices[i + 2] = 0;
-		// 	const x = vertices[i];
-		// 	const z = vertices[i + 2];
-		// 	const y = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * z, 0)));
-		// 	vertices[i + 1] = 0; // y;
-		// }
-		// geometry.setFromPoints(vertices);
-
-		const { position } = geometry.attributes;
-		let h = 0;
-		for (let i = 0; i < position.count; i += 1) {
-			h = ((h * 2) + (Math.random() * 100)) / 3;
-			position.setZ(i, h);
-		}
-		position.needsUpdate = true;
-
-		const material = new THREE.MeshStandardMaterial({
-			color: 0x55ffbb,
-			// wireframe: true,
-			side: THREE.DoubleSide,
-			// displacementMap: heightMap,
-			// displacementScale: 30,
-			flatShading: true,
-		});
-
-		// create the mesh for the terrain
-		const terrain = new THREE.Mesh(geometry, material);
-
-		terrain.position.x = 0;
-		terrain.position.y = -10;
-		terrain.position.z = 0;
-
-		// rotate the terrain to make it look like hills and valleys
-		terrain.rotation.x = -Math.PI / 2;
-		return terrain;
 	}
 
 	async addNewTerrainByHeightMap(heightMapImageSrc) {
@@ -232,6 +178,8 @@ class DinoScene {
 			// h = ((h * 2) + (Math.random() * 100)) / 3;
 			const y = Math.floor(i / size);
 			const x = i % size;
+			// const x = position.getX(i);
+			// const y = position.getY(i);
 			if (!heights[y]) {
 				console.warn('No heights[y]', i, x, y, 'size', size);
 				continue;
@@ -243,19 +191,37 @@ class DinoScene {
 	}
 
 	makeTerrainChunkPlane(terrainChunk = {}) {
+		const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
 		const { heights, segments, size } = terrainChunk;
 		const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
-		// heightMap.wrapS = THREE.RepeatWrapping;
-		// heightMap.wrapT = THREE.RepeatWrapping;
+
+		// Option 1 -- a heightmap -- but it appears to be blank
+
+		// const heightMap = new THREE.Texture(terrainChunk.image);
+		// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+		// heightMap.image = terrainChunk.image;
+		// heightMap.needsUpdate = true;
+		// heightMap.type = THREE.RGBAFormat;
+		// heightMap.format = THREE.UnsignedByteType;
+
+		// Option 2 -- This has not worked
 
 		this.applyHeightsToGeometry(geometry, heights, segments);
 
+		// Not sure if this is needed:
+		// heightMap.wrapS = THREE.RepeatWrapping;
+		// heightMap.wrapT = THREE.RepeatWrapping;
+
 		const material = new THREE.MeshStandardMaterial({
+			opacity: 0.9,
 			color: 0x55ffbb,
+			map: texture,
+			// vertexColors: true,
 			// wireframe: true,
 			side: THREE.DoubleSide,
+			// Option 1
 			// displacementMap: heightMap,
-			// displacementScale: 30,
+			// displacementScale: 300,
 			flatShading: true,
 		});
 
@@ -267,7 +233,7 @@ class DinoScene {
 		terrain.position.z = 0;
 
 		// rotate the terrain to make it look like hills and valleys
-		terrain.rotation.x = -Math.PI / 2;
+		// terrain.rotation.x = -Math.PI / 2;
 		return terrain;
 	}
 

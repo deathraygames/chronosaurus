@@ -3,3 +3,14 @@ body {
 	margin: 0;
 	background: #444;
 }
+
+#map {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 20vmin;
+}
+
+#map img {
+	width: 100%;
+}

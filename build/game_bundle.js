@@ -30797,7 +30797,7 @@
 			// pointLight.lookAt(new Vector3());
 			this.scene.add(pointLight);
 
-			const ambientLight = new AmbientLight(0x404040, 0.5);
+			const ambientLight = new AmbientLight(0x404040, 0.75);
 			this.scene.add(ambientLight);
 
 			// const sphereSize = 1;
@@ -30842,7 +30842,7 @@
 					const sceneObj = this.entitySceneObjects[entity.entityId];
 					if (sceneObj) {
 						sceneObj.position.copy(DinoScene.convertCoordsToVector3(entity.coords));
-						sceneObj.rotation.set(0, entity.facing, 0);
+						sceneObj.rotation.set(0, 0, -entity.facing);
 						// TODO: see if position or anything else has changed
 					} else {
 						this.addNewWorldEntity(entity);
@@ -30877,65 +30877,11 @@
 
 		makeBox() {
 			const box = new BoxGeometry(10, 20, 10);
-			const material = new MeshToonMaterial({ color: 0xff0000, flatShading: true });
+			const material = new MeshToonMaterial({
+				color: 0xff0000, // flatShading: true
+			});
 			const boxMesh = new Mesh(box, material);
 			return boxMesh;
-		}
-
-		makeTerrain(heightMap) {
-			const size = this.chunkSize * this.gridSquareSize;
-			console.log(this, size);
-			const geometry = new PlaneGeometry(size, size, this.terrainSegments, this.terrainSegments);
-			// heightMap.wrapS = THREE.RepeatWrapping;
-			// heightMap.wrapT = THREE.RepeatWrapping;
-
-			// set the height of each vertex based on the color of the corresponding pixel in the heightmap
-			// const vertices = geometry.attributes.position.array;
-			// const imageData = heightMap.image.data;
-			// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 4) {
-			// 	vertices[i] = (imageData[j] + imageData[j + 1] + imageData[j + 2]) / 3;
-			// }
-
-			// const noiseScale = 0.001;
-			// const vertices = geometry.attributes.position.array;
-			// const len = this.terrainSegments ** 2; // vertices.length
-			// for (let i = 0, j = 0, l = len; i < l; i += 3, j += 1) {
-			// 	vertices[i] = 0;
-			// 	vertices[i + 2] = 0;
-			// 	const x = vertices[i];
-			// 	const z = vertices[i + 2];
-			// 	const y = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * z, 0)));
-			// 	vertices[i + 1] = 0; // y;
-			// }
-			// geometry.setFromPoints(vertices);
-
-			const { position } = geometry.attributes;
-			let h = 0;
-			for (let i = 0; i < position.count; i += 1) {
-				h = ((h * 2) + (Math.random() * 100)) / 3;
-				position.setZ(i, h);
-			}
-			position.needsUpdate = true;
-
-			const material = new MeshStandardMaterial({
-				color: 0x55ffbb,
-				// wireframe: true,
-				side: DoubleSide,
-				// displacementMap: heightMap,
-				// displacementScale: 30,
-				flatShading: true,
-			});
-
-			// create the mesh for the terrain
-			const terrain = new Mesh(geometry, material);
-
-			terrain.position.x = 0;
-			terrain.position.y = -10;
-			terrain.position.z = 0;
-
-			// rotate the terrain to make it look like hills and valleys
-			terrain.rotation.x = -Math.PI / 2;
-			return terrain;
 		}
 
 		async addNewTerrainByHeightMap(heightMapImageSrc) {
@@ -30953,6 +30899,8 @@
 				// h = ((h * 2) + (Math.random() * 100)) / 3;
 				const y = Math.floor(i / size);
 				const x = i % size;
+				// const x = position.getX(i);
+				// const y = position.getY(i);
 				if (!heights[y]) {
 					console.warn('No heights[y]', i, x, y, 'size', size);
 					continue;
@@ -30964,19 +30912,37 @@
 		}
 
 		makeTerrainChunkPlane(terrainChunk = {}) {
+			const texture = new TextureLoader().load('images/test-grid.jpg');
 			const { heights, segments, size } = terrainChunk;
 			const geometry = new PlaneGeometry(size, size, segments, segments);
-			// heightMap.wrapS = THREE.RepeatWrapping;
-			// heightMap.wrapT = THREE.RepeatWrapping;
+
+			// Option 1 -- a heightmap -- but it appears to be blank
+
+			// const heightMap = new THREE.Texture(terrainChunk.image);
+			// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+			// heightMap.image = terrainChunk.image;
+			// heightMap.needsUpdate = true;
+			// heightMap.type = THREE.RGBAFormat;
+			// heightMap.format = THREE.UnsignedByteType;
+
+			// Option 2 -- This has not worked
 
 			this.applyHeightsToGeometry(geometry, heights, segments);
 
+			// Not sure if this is needed:
+			// heightMap.wrapS = THREE.RepeatWrapping;
+			// heightMap.wrapT = THREE.RepeatWrapping;
+
 			const material = new MeshStandardMaterial({
+				opacity: 0.9,
 				color: 0x55ffbb,
+				map: texture,
+				// vertexColors: true,
 				// wireframe: true,
 				side: DoubleSide,
+				// Option 1
 				// displacementMap: heightMap,
-				// displacementScale: 30,
+				// displacementScale: 300,
 				flatShading: true,
 			});
 
@@ -30988,7 +30954,7 @@
 			terrain.position.z = 0;
 
 			// rotate the terrain to make it look like hills and valleys
-			terrain.rotation.x = -Math.PI / 2;
+			// terrain.rotation.x = -Math.PI / 2;
 			return terrain;
 		}
 
@@ -31067,9 +31033,9 @@
 	const EAST = 1;
 	const SOUTH = 2;
 	const WEST = 3;
-	const X$1 = 0;
-	const Y$1 = 1;
-	const Z$1 = 2;
+	const X$2 = 0;
+	const Y$2 = 1;
+	const Z$2 = 2;
 	const DIRECTION_NAMES = Object.freeze(['North', 'East', 'South', 'West']);
 	const DIRECTIONS = Object.freeze([NORTH, EAST, SOUTH, WEST]);
 	const RADIANS = Object.freeze([0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]);
@@ -31084,13 +31050,13 @@
 		static getRelativeCoordsInDirection(coords, facing, forward = 0, strafe = 0, up = 0) {
 			const newCoords = [...coords];
 			const facingEastWest = (facing % 2);
-			const forwardAxis = facingEastWest ? X$1 : Y$1;
-			const strafeAxis = facingEastWest ? Y$1 : X$1;
+			const forwardAxis = facingEastWest ? X$2 : Y$2;
+			const strafeAxis = facingEastWest ? Y$2 : X$2;
 			const forwardDirection = (facing === NORTH || facing === WEST) ? -1 : 1;
 			const strafeDirection = (facing === NORTH || facing === EAST) ? 1 : -1;
 			newCoords[forwardAxis] += (forward * forwardDirection);
 			newCoords[strafeAxis] += (strafe * strafeDirection);
-			newCoords[Z$1] += up;
+			newCoords[Z$2] += up;
 			return newCoords;
 		}
 
@@ -31111,29 +31077,29 @@
 
 		static getDistance(coords1, coords2) {
 			return Math.sqrt(
-				(coords2[X$1] - coords1[X$1]) ** 2
-				+ (coords2[Y$1] - coords1[Y$1]) ** 2
-				+ (coords2[Z$1] - coords1[Z$1]) ** 2,
+				(coords2[X$2] - coords1[X$2]) ** 2
+				+ (coords2[Y$2] - coords1[Y$2]) ** 2
+				+ (coords2[Z$2] - coords1[Z$2]) ** 2,
 			);
 		}
 
 		static checkEqual(coords1, coords2) {
-			return (coords1[X$1] === coords2[X$1] && coords1[Y$1] === coords2[Y$1] && coords1[Z$1] === coords2[Z$1]);
+			return (coords1[X$2] === coords2[X$2] && coords1[Y$2] === coords2[Y$2] && coords1[Z$2] === coords2[Z$2]);
 		}
 
 		static subtract(coords1, coords2) {
-			return [coords1[X$1] - coords2[X$1], coords1[Y$1] - coords2[Y$1], coords1[Z$1] - coords2[Z$1]];
+			return [coords1[X$2] - coords2[X$2], coords1[Y$2] - coords2[Y$2], coords1[Z$2] - coords2[Z$2]];
 		}
 
 		static add(coords1, coords2) {
-			return [coords1[X$1] + coords2[X$1], coords1[Y$1] + coords2[Y$1], coords1[Z$1] + coords2[Z$1]];
+			return [coords1[X$2] + coords2[X$2], coords1[Y$2] + coords2[Y$2], coords1[Z$2] + coords2[Z$2]];
 		}
 	}
 
 	// Indices
-	ArrayCoords.X = X$1;
-	ArrayCoords.Y = Y$1;
-	ArrayCoords.Z = Z$1;
+	ArrayCoords.X = X$2;
+	ArrayCoords.Y = Y$2;
+	ArrayCoords.Z = Z$2;
 	ArrayCoords.NORTH = NORTH;
 	ArrayCoords.EAST = EAST;
 	ArrayCoords.SOUTH = SOUTH;
@@ -31770,7 +31736,7 @@
 		);
 	};
 
-	const { X, Y, Z } = ArrayCoords;
+	const { X: X$1, Y: Y$1, Z: Z$1 } = ArrayCoords;
 
 	class DinoWorld {
 		constructor() {
@@ -31801,17 +31767,19 @@
 		}
 
 		calcTerrainHeight(x, y) {
-			const noiseScale = 0.02;
-			const minHeight = -100;
+			const noiseScale = 0.002;
+			const minHeight = -10;
 			const maxHeight = 500;
 			const delta = maxHeight - minHeight;
 			const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
 			// TODO: FIXME -- noiseValue is coming back as 0
-			const h = minHeight + (delta * noiseValue);
+			let h = Math.max(minHeight + (delta * noiseValue), 0);
+			// h = (x < 10) ? 100 : 0;
+			// if (x > 0) h = 0;
 			// console.log(noiseValue);
-			const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+			// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
 			// console.log(h, h2, '...', noiseValue);
-			this.validateNumbers({ h, h2 });
+			// this.validateNumbers({ h, h2 });
 			return h;
 		}
 
@@ -31827,22 +31795,22 @@
 
 		/** Get chunk-level x,y,z coordinates from world x,y,z coordinates */
 		getChunkCoords(coords) {
-			const x = this.getChunkCoord(coords[X]);
-			const y = 0; // right now we don't do chunking up/down
-			const z = this.getChunkCoord(coords[Z]);
+			const x = this.getChunkCoord(coords[X$1]);
+			const y = this.getChunkCoord(coords[Y$1]);
+			const z = 0; // right now we don't do chunking up/down
 			return [x, y, z];
 		}
 
 		getChunkTopLeftCoords(chunkCoords) {
 			const center = this.getChunkCenterCoords(chunkCoords);
-			return [center[X] - this.halfChunkSize, 0, center[Z] - this.halfChunkSize];
+			return [center[X$1] - this.halfChunkSize, center[Y$1] - this.halfChunkSize, 0];
 		}
 
 		getChunkCenterCoords(chunkCoords) {
 			if (!chunkCoords) throw new Error();
-			const centerX = chunkCoords[X] * this.chunkSize;
-			const centerZ = chunkCoords[Z] * this.chunkSize;
-			return [centerX, 0, centerZ];
+			const centerX = chunkCoords[X$1] * this.chunkSize;
+			const centerY = chunkCoords[Y$1] * this.chunkSize;
+			return [centerX, centerY, 0];
 		}
 
 		getChunkId(chunkCoords) {
@@ -31850,27 +31818,63 @@
 			return `terrain-chunk-${chunkCoords.join(',')}`;
 		}
 
-		makeTerrainChunk(chunkCoords) {
+		makeChunkCanvas() {
+			const canvas = document.createElement('canvas');
+			canvas.width = this.terrainSegmentsPerChunk;
+			canvas.height = this.terrainSegmentsPerChunk;
+			const ctx = canvas.getContext('2d');
+			return { canvas, ctx };
+		}
+
+		async makeTerrainChunk(chunkCoords) {
 			if (!chunkCoords) throw new Error('makeTerrainChunk missing chunkCoords');
+			const debug = [];
 			const heights = [];
 			const topLeft = this.getChunkTopLeftCoords(chunkCoords);
 			const center = this.getChunkCenterCoords(chunkCoords);
 			const chunkId = this.getChunkId(chunkCoords);
+			const { canvas, ctx } = this.makeChunkCanvas();
+			// x and y here are steps along the terrain segments, not actual world x,y coordinates
 			let x;
 			let y;
 			const size = this.terrainSegmentsPerChunk + 2;
 			for (y = 0; y <= size; y += 1) {
 				if (!heights[y]) heights[y] = [];
+				if (!debug[y]) debug[y] = [];
 				for (x = 0; x <= size; x += 1) {
-					// const h = Math.round(Math.sin(x) * 100 + Math.sin(y) * 50);
-					const worldX = topLeft[X] + x;
-					const worldY = topLeft[Z] + y;
-					// Note: there's a z --> y conversion happening here
+					// Convert the x, y steps to actual world x, y
+					const worldX = topLeft[X$1] + (x * this.terrainSegmentSize);
+					const worldY = topLeft[Y$1] + (y * this.terrainSegmentSize);
 					this.validateNumbers({ worldX, worldY });
-					heights[y][x] = this.calcTerrainHeight(worldX, worldY);
+					const h = this.calcTerrainHeight(worldX, worldY);
+					heights[y][x] = h;
+					// console.log(x, y, '-->', worldX, worldY, heights[y][x]);
+					// if( x > 10) throw new Error();
+					const hmh = Math.min(Math.max(Math.round(h), 0), 255);
+					ctx.fillStyle = `rgba(${hmh},${hmh},${hmh},1)`;
+					// ctx.fillStyle = `rgb(${hmh},${hmh},${hmh})`;
+					ctx.fillRect(x, y, 1, 1);
 				}
 			}
+			const image = new Image();
+			image.src = canvas.toDataURL();
+			// This is beyond stupid, but the image is somehow not loaded
+			// even though we just created it and populated it synchronously.
+			// So we have to wait for the image to load...
+			const waitForImage = (img) => (
+				new Promise((resolve, reject) => {
+					img.onload = resolve;
+					img.onerror = reject;
+				})
+			);
+			// console.log(image.complete);
+			await waitForImage(image);
+			// console.log(image.complete);
+
+			document.getElementById('map').innerHTML = '';
+			document.getElementById('map').appendChild(image);
 			return {
+				image,
 				heights,
 				entityId: chunkId,
 				center,
@@ -31879,21 +31883,21 @@
 			};
 		}
 
-		addNewTerrainChunk(chunkCoords) {
+		async addNewTerrainChunk(chunkCoords) {
 			const chunkId = this.getChunkId(chunkCoords);
 			// Get it from cache if its already been created
 			if (this.terrainChunksCache[chunkId]) return this.terrainChunksCache[chunkId];
 			// Otherwise create it
-			const chunk = this.makeTerrainChunk(chunkCoords);
+			const chunk = await this.makeTerrainChunk(chunkCoords);
 			// ...and cache it
 			this.terrainChunksCache[chunk.entityId] = chunk;
 			return chunk;
 		}
 
-		makeTerrainChunks(coords) {
+		async makeTerrainChunks(coords) {
 			if (!coords) throw new Error('Missing coords param');
 			const chunkCoords = this.getChunkCoords(coords);
-			const centerChunk = this.addNewTerrainChunk(chunkCoords);
+			const centerChunk = await this.addNewTerrainChunk(chunkCoords);
 			return [
 				centerChunk,
 			];
@@ -31961,6 +31965,7 @@
 	}
 
 	// import * as THREE from 'three';
+	const { X, Y, Z } = ArrayCoords;
 
 	const { PI } = Math;
 	const TAU = PI * 2;
@@ -32000,6 +32005,7 @@
 				WorldClass: DinoWorld,
 			});
 			this.pointerLocker = new PointerLocker();
+			this.cameraPosition = [0, 0, 0];
 		}
 
 		handleCommand(command) {
@@ -32007,38 +32013,40 @@
 			const commandWords = command.split(' ');
 			const firstCommand = commandWords[0];
 			if (firstCommand === 'move') {
-				let spd = 3;
+				let spd = 10;
 				let angleOfMovement = mainCharacter.facing; // forward
 				if (commandWords[1] === 'forward') ;
 				else if (commandWords[1] === 'back') angleOfMovement += PI;
-				else if (commandWords[1] === 'left') angleOfMovement += HALF_PI;
-				else if (commandWords[1] === 'right') angleOfMovement -= HALF_PI;
+				else if (commandWords[1] === 'left') angleOfMovement -= HALF_PI;
+				else if (commandWords[1] === 'right') angleOfMovement += HALF_PI;
 				const x = spd * Math.sin(angleOfMovement);
-				const z = spd * Math.cos(angleOfMovement);
-				mainCharacter.move([x, 0, z]);
+				const y = spd * Math.cos(angleOfMovement);
+				mainCharacter.move([x, y, 0]);
 				// this.cameraCoords.position
 			} else if (firstCommand === 'turn') {
 				let turnAmount = TAU / 50;
-				if (commandWords[1] === 'right') turnAmount *= -1;
+				if (commandWords[1] === 'left') turnAmount *= -1;
 				mainCharacter.turn(turnAmount);
 			}
 		}
 
 		applyPhysics(actor, world) {
 			const h = world.getTerrainHeight(actor.coords[0], actor.coords[2]);
-			actor.setY(h);
+			actor.setZ(h);
 		}
 
-		animationTick() {
+		async animationTick() {
 			const { mainCharacter, actors } = this;
 			const zoom = this.mouseWheelWatcher.percent * 100;
 			this.mouseWheelWatcher.update();
+			this.cameraPosition[Z] = 100 + (zoom ** 2);
 			const [x, y, z] = mainCharacter.coords;
-			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
+			const terrainChunks = await this.world.makeTerrainChunks(mainCharacter.coords);
 			actors.forEach((actor) => this.applyPhysics(actor, this.world));
 			this.gameScene.update({
 				terrainChunks,
-				cameraPosition: [-(zoom ** 1.5), 30 + (zoom ** 2), -zoom / 2],
+				// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
+				cameraPosition: this.cameraPosition,
 				cameraRotation: mainCharacter.facing,
 				worldCoords: [-x, -y, -z],
 				entities: [...actors],
@@ -32048,7 +32056,7 @@
 		async start() {
 			const { spirit } = this.addNewPlayer();
 			this.mainCharacter = this.addNewCharacter(spirit);
-			this.mainCharacter.coords = [100, 0, 100];
+			this.mainCharacter.coords = [0, 0, 0];
 			// this.transition('home');
 			// this.transition('intro');
 			this.transition('explore');
@@ -32057,7 +32065,8 @@
 			this.pointerLocker
 				.setup() // Needs to happen after the canvas is created
 				.on('lockedMouseMove', ({ x, y }) => {
-					this.mainCharacter.facing += x * -0.001;
+					this.mainCharacter.facing += x * 0.001;
+					this.cameraPosition[X] += y * 0.4;
 				});
 			// gameScene.addBox();
 			// gameScene.addBox();
