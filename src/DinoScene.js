@@ -197,10 +197,12 @@ class DinoScene {
 
 		// Option 1 -- a heightmap -- but it appears to be blank
 
-		// const heightMap = new THREE.Texture(terrainChunk.image);
 		// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
-		// heightMap.image = terrainChunk.image;
 		// heightMap.needsUpdate = true;
+
+		// other attempts:
+		// const heightMap = new THREE.Texture(terrainChunk.image);
+		// heightMap.image = terrainChunk.image;
 		// heightMap.type = THREE.RGBAFormat;
 		// heightMap.format = THREE.UnsignedByteType;
 

@@ -487,7 +487,7 @@
 
 	}
 
-	function clamp$1( value, min, max ) {
+	function clamp$2( value, min, max ) {
 
 		return Math.max( min, Math.min( max, value ) );
 
@@ -949,7 +949,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp$1( theta, - 1, 1 ) );
+			return Math.acos( clamp$2( theta, - 1, 1 ) );
 
 		}
 
@@ -3313,7 +3313,7 @@
 
 		angleTo( q ) {
 
-			return 2 * Math.acos( Math.abs( clamp$1( this.dot( q ), - 1, 1 ) ) );
+			return 2 * Math.acos( Math.abs( clamp$2( this.dot( q ), - 1, 1 ) ) );
 
 		}
 
@@ -4130,7 +4130,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp$1( theta, - 1, 1 ) );
+			return Math.acos( clamp$2( theta, - 1, 1 ) );
 
 		}
 
@@ -6534,7 +6534,7 @@
 
 				case 'XYZ':
 
-					this._y = Math.asin( clamp$1( m13, - 1, 1 ) );
+					this._y = Math.asin( clamp$2( m13, - 1, 1 ) );
 
 					if ( Math.abs( m13 ) < 0.9999999 ) {
 
@@ -6552,7 +6552,7 @@
 
 				case 'YXZ':
 
-					this._x = Math.asin( - clamp$1( m23, - 1, 1 ) );
+					this._x = Math.asin( - clamp$2( m23, - 1, 1 ) );
 
 					if ( Math.abs( m23 ) < 0.9999999 ) {
 
@@ -6570,7 +6570,7 @@
 
 				case 'ZXY':
 
-					this._x = Math.asin( clamp$1( m32, - 1, 1 ) );
+					this._x = Math.asin( clamp$2( m32, - 1, 1 ) );
 
 					if ( Math.abs( m32 ) < 0.9999999 ) {
 
@@ -6588,7 +6588,7 @@
 
 				case 'ZYX':
 
-					this._y = Math.asin( - clamp$1( m31, - 1, 1 ) );
+					this._y = Math.asin( - clamp$2( m31, - 1, 1 ) );
 
 					if ( Math.abs( m31 ) < 0.9999999 ) {
 
@@ -6606,7 +6606,7 @@
 
 				case 'YZX':
 
-					this._z = Math.asin( clamp$1( m21, - 1, 1 ) );
+					this._z = Math.asin( clamp$2( m21, - 1, 1 ) );
 
 					if ( Math.abs( m21 ) < 0.9999999 ) {
 
@@ -6624,7 +6624,7 @@
 
 				case 'XZY':
 
-					this._z = Math.asin( - clamp$1( m12, - 1, 1 ) );
+					this._z = Math.asin( - clamp$2( m12, - 1, 1 ) );
 
 					if ( Math.abs( m12 ) < 0.9999999 ) {
 
@@ -8687,8 +8687,8 @@
 
 			// h,s,l ranges are in 0.0 - 1.0
 			h = euclideanModulo( h, 1 );
-			s = clamp$1( s, 0, 1 );
-			l = clamp$1( l, 0, 1 );
+			s = clamp$2( s, 0, 1 );
+			l = clamp$2( l, 0, 1 );
 
 			if ( s === 0 ) {
 
@@ -8912,7 +8912,7 @@
 
 			ColorManagement.fromWorkingColorSpace( _color.copy( this ), colorSpace );
 
-			return clamp$1( _color.r * 255, 0, 255 ) << 16 ^ clamp$1( _color.g * 255, 0, 255 ) << 8 ^ clamp$1( _color.b * 255, 0, 255 ) << 0;
+			return clamp$2( _color.r * 255, 0, 255 ) << 16 ^ clamp$2( _color.g * 255, 0, 255 ) << 8 ^ clamp$2( _color.b * 255, 0, 255 ) << 0;
 
 		}
 
@@ -30918,10 +30918,12 @@
 
 			// Option 1 -- a heightmap -- but it appears to be blank
 
-			// const heightMap = new THREE.Texture(terrainChunk.image);
 			// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
-			// heightMap.image = terrainChunk.image;
 			// heightMap.needsUpdate = true;
+
+			// other attempts:
+			// const heightMap = new THREE.Texture(terrainChunk.image);
+			// heightMap.image = terrainChunk.image;
 			// heightMap.type = THREE.RGBAFormat;
 			// heightMap.format = THREE.UnsignedByteType;
 
@@ -30974,7 +30976,7 @@
 	}
 
 	// import { clamp } from 'three/src/math/mathutils.js';
-	const clamp = (v, min = 0, max = 1) => v < min ? min : v > max ? max : v;
+	const clamp$1 = (v, min = 0, max = 1) => v < min ? min : v > max ? max : v;
 
 	const WHEEL_PX = 25;
 	const WHEEL_EVENT = 'wheel';
@@ -30995,7 +30997,7 @@
 
 		set mouseWheel(n) {
 			this.lastMouseWheelDeltaY = n;
-			this.y = clamp(this.y + n, this.min, this.max);
+			this.y = clamp$1(this.y + n, this.min, this.max);
 		}
 
 		get percent() { return this.getPercent(); }
@@ -31105,6 +31107,9 @@
 	ArrayCoords.SOUTH = SOUTH;
 	ArrayCoords.WEST = WEST;
 	ArrayCoords.DIRECTIONS = DIRECTIONS;
+
+	// eslint-disable-next-line no-nested-ternary
+	const clamp = (v, min = 0, max = 1) => (v < min ? min : v > max ? max : v);
 
 	const MAGIC_NUMBER = 10000;
 	const SEED_MAGIC_INT = 9999999;
@@ -31768,17 +31773,16 @@
 
 		calcTerrainHeight(x, y) {
 			const noiseScale = 0.002;
-			const minHeight = -10;
-			const maxHeight = 500;
+			const minHeight = 0;
+			const maxHeight = 100;
 			const delta = maxHeight - minHeight;
 			const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
-			// TODO: FIXME -- noiseValue is coming back as 0
-			let h = Math.max(minHeight + (delta * noiseValue), 0);
-			// h = (x < 10) ? 100 : 0;
-			// if (x > 0) h = 0;
-			// console.log(noiseValue);
+			let h = clamp(minHeight + (delta * noiseValue), 0, maxHeight);
+			// Add this just to make the terrain more pronounced
+			if (x < 0 && y < 0) h += 100;
+			else if (x < 0) h = 0;
+			// Alternative
 			// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
-			// console.log(h, h2, '...', noiseValue);
 			// this.validateNumbers({ h, h2 });
 			return h;
 		}
@@ -32039,7 +32043,7 @@
 			const { mainCharacter, actors } = this;
 			const zoom = this.mouseWheelWatcher.percent * 100;
 			this.mouseWheelWatcher.update();
-			this.cameraPosition[Z] = 100 + (zoom ** 2);
+			this.cameraPosition[Z] = 1300 + (zoom ** 2);
 			const [x, y, z] = mainCharacter.coords;
 			const terrainChunks = await this.world.makeTerrainChunks(mainCharacter.coords);
 			actors.forEach((actor) => this.applyPhysics(actor, this.world));
@@ -32065,8 +32069,9 @@
 			this.pointerLocker
 				.setup() // Needs to happen after the canvas is created
 				.on('lockedMouseMove', ({ x, y }) => {
-					this.mainCharacter.facing += x * 0.001;
-					this.cameraPosition[X] += y * 0.4;
+					// this.mainCharacter.facing += x * 0.001;
+					this.cameraPosition[X] += x * 1;
+					this.cameraPosition[Y] += y * 1;
 				});
 			// gameScene.addBox();
 			// gameScene.addBox();

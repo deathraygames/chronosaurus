@@ -1,4 +1,4 @@
-import { PseudoRandomizer, ArrayCoords } from 'rocket-utility-belt';
+import { PseudoRandomizer, ArrayCoords, clamp } from 'rocket-utility-belt';
 import noise from 'noise-esm';
 const { X, Y, Z } = ArrayCoords;
 
@@ -32,17 +32,16 @@ class DinoWorld {
 
 	calcTerrainHeight(x, y) {
 		const noiseScale = 0.002;
-		const minHeight = -10;
-		const maxHeight = 500;
+		const minHeight = 0;
+		const maxHeight = 100;
 		const delta = maxHeight - minHeight;
 		const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
-		// TODO: FIXME -- noiseValue is coming back as 0
-		let h = Math.max(minHeight + (delta * noiseValue), 0);
-		// h = (x < 10) ? 100 : 0;
-		// if (x > 0) h = 0;
-		// console.log(noiseValue);
+		let h = clamp(minHeight + (delta * noiseValue), 0, maxHeight);
+		// Add this just to make the terrain more pronounced
+		if (x < 0 && y < 0) h += 100;
+		else if (x < 0) h = 0;
+		// Alternative
 		// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
-		// console.log(h, h2, '...', noiseValue);
 		// this.validateNumbers({ h, h2 });
 		return h;
 	}
