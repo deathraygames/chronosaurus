@@ -15,7 +15,7 @@ class DinoWorld {
 		this.chunkSizeMeters = 128;
 		this.chunkSize = this.unitsPerMeter * this.chunkSizeMeters; // 2560 units
 		this.halfChunkSize = this.chunkSize / 2;
-		this.terrainSegmentSize = 10;
+		this.terrainSegmentSize = 512; // was 10
 		this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize; // 256
 		this.terrainChunksCache = {};
 	}
@@ -38,8 +38,10 @@ class DinoWorld {
 		const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
 		let h = clamp(minHeight + (delta * noiseValue), 0, maxHeight);
 		// Add this just to make the terrain more pronounced
-		if (x < 0 && y < 0) h += 100;
-		else if (x < 0) h = 0;
+		if (x < 0) {
+			if (y < 0) h = 100;
+			else h = 0;
+		}
 		// Alternative
 		// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
 		// this.validateNumbers({ h, h2 });
@@ -81,10 +83,10 @@ class DinoWorld {
 		return `terrain-chunk-${chunkCoords.join(',')}`;
 	}
 
-	makeChunkCanvas() {
+	makeChunkCanvas(size) {
 		const canvas = document.createElement('canvas');
-		canvas.width = this.terrainSegmentsPerChunk;
-		canvas.height = this.terrainSegmentsPerChunk;
+		canvas.width = size * 1;
+		canvas.height = size * 1;
 		const ctx = canvas.getContext('2d');
 		return { canvas, ctx };
 	}
@@ -96,27 +98,32 @@ class DinoWorld {
 		const topLeft = this.getChunkTopLeftCoords(chunkCoords);
 		const center = this.getChunkCenterCoords(chunkCoords);
 		const chunkId = this.getChunkId(chunkCoords);
-		const { canvas, ctx } = this.makeChunkCanvas();
+		const size = this.terrainSegmentsPerChunk + 2;
+		const { canvas, ctx } = this.makeChunkCanvas(size);
 		// x and y here are steps along the terrain segments, not actual world x,y coordinates
 		let x;
 		let y;
-		const size = this.terrainSegmentsPerChunk + 2;
 		for (y = 0; y <= size; y += 1) {
 			if (!heights[y]) heights[y] = [];
 			if (!debug[y]) debug[y] = [];
 			for (x = 0; x <= size; x += 1) {
 				// Convert the x, y steps to actual world x, y
-				const worldX = topLeft[X] + (x * this.terrainSegmentSize);
-				const worldY = topLeft[Y] + (y * this.terrainSegmentSize);
+				const convSize = this.terrainSegmentSize;
+				const worldX = topLeft[X] + (x * convSize);
+				const worldY = topLeft[Y] + (y * convSize);
 				this.validateNumbers({ worldX, worldY });
 				const h = this.calcTerrainHeight(worldX, worldY);
+				if (y === 0) console.log('y = 0', x, h);
 				heights[y][x] = h;
 				// console.log(x, y, '-->', worldX, worldY, heights[y][x]);
 				// if( x > 10) throw new Error();
 				const hmh = Math.min(Math.max(Math.round(h), 0), 255);
 				ctx.fillStyle = `rgba(${hmh},${hmh},${hmh},1)`;
+				// if (Math.round(worldX) < 1) ctx.fillStyle = `rgba(255,${hmh},${hmh},1)`;
+				// if (Math.round(worldY) < 1) ctx.fillStyle = `rgba(255,255,${hmh},1)`;
 				// ctx.fillStyle = `rgb(${hmh},${hmh},${hmh})`;
-				ctx.fillRect(x, y, 1, 1);
+				// ctx.fillRect(x * 2, y * 2, 2, 2);
+				ctx.fillRect(x * 1, y * 1, 1, 1);
 			}
 		}
 		const image = new Image();

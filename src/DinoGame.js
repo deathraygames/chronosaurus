@@ -71,7 +71,7 @@ class DinoGame extends GenericGame {
 	}
 
 	applyPhysics(actor, world) {
-		const h = world.getTerrainHeight(actor.coords[0], actor.coords[2]);
+		const h = world.getTerrainHeight(actor.coords[X], actor.coords[Y]);
 		actor.setZ(h);
 	}
 

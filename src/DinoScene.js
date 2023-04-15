@@ -173,19 +173,32 @@ class DinoScene {
 
 	applyHeightsToGeometry(geometry, heights, size) {
 		const { position } = geometry.attributes;
-		// let h = 0;
+		const vertices = position.array;
+		const heightMultiplier = 2;
+		// I think the problem has to do with size of the geometry not matching the data
+		console.log(vertices.length, position.count, size * size, size, heights.length, heights);
+		// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 3) {
 		for (let i = 0; i < position.count; i += 1) {
-			// h = ((h * 2) + (Math.random() * 100)) / 3;
+			// h = (Math.random() * 100));
 			const y = Math.floor(i / size);
 			const x = i % size;
+			// const x = position.getX(i);
+			// const y = position.getY(i);
 			// const x = position.getX(i);
 			// const y = position.getY(i);
 			if (!heights[y]) {
 				console.warn('No heights[y]', i, x, y, 'size', size);
 				continue;
 			}
-			const h = heights[y][x];
-			position.setZ(i, h);
+			const h = heights[y][x] * heightMultiplier;
+			// console.log(x, y, h);
+			// position.setZ(i, h);
+			{
+				const x = position.getX(i);
+				const y = position.getY(i);
+				position.setXYZ(i, x, y, h);
+			}
+			// vertices[j + 1] = h;
 		}
 		position.needsUpdate = true;
 	}
@@ -193,12 +206,14 @@ class DinoScene {
 	makeTerrainChunkPlane(terrainChunk = {}) {
 		const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
 		const { heights, segments, size } = terrainChunk;
+		// const segments = 8;
 		const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
 
 		// Option 1 -- a heightmap -- but it appears to be blank
 
 		// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
 		// heightMap.needsUpdate = true;
+		// console.log(terrainChunk.image.complete);
 
 		// other attempts:
 		// const heightMap = new THREE.Texture(terrainChunk.image);
@@ -223,7 +238,7 @@ class DinoScene {
 			side: THREE.DoubleSide,
 			// Option 1
 			// displacementMap: heightMap,
-			// displacementScale: 300,
+			// displacementScale: 500,
 			flatShading: true,
 		});
 
