@@ -176,18 +176,19 @@ class DinoScene {
 		const vertices = position.array;
 		const heightMultiplier = 2;
 		// I think the problem has to do with size of the geometry not matching the data
-		console.log(vertices.length, position.count, size * size, size, heights.length, heights);
+		console.log(vertices.length, position.count, 'size^2', size * size, 'size', size, 'height length', heights.length, heights);
+		const heightsSize = heights.length;
 		// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 3) {
 		for (let i = 0; i < position.count; i += 1) {
 			// h = (Math.random() * 100));
-			const y = Math.floor(i / size);
-			const x = i % size;
+			const y = Math.floor(i / heightsSize);
+			const x = i % heightsSize;
 			// const x = position.getX(i);
 			// const y = position.getY(i);
 			// const x = position.getX(i);
 			// const y = position.getY(i);
 			if (!heights[y]) {
-				console.warn('No heights[y]', i, x, y, 'size', size);
+				console.warn('No heights[y]', i, x, y, 'heightsSize', heightsSize);
 				continue;
 			}
 			const h = heights[y][x] * heightMultiplier;
@@ -207,7 +208,7 @@ class DinoScene {
 		const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
 		const { heights, segments, size } = terrainChunk;
 		// const segments = 8;
-		const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
+		const geometry = new THREE.PlaneGeometry(size, size, segments - 2, segments - 2);
 
 		// Option 1 -- a heightmap -- but it appears to be blank
 
