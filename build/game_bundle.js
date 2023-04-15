@@ -1,6 +1,244 @@
 (function () {
 	'use strict';
 
+	class Observer {
+		constructor() {
+			this.eventListeners = {};
+		}
+
+		/** Add event, analogous to `addEventListener` and jQuery's `on` */
+		on(eventTypeName, listener) {
+			let eventListenerSet = this.eventListeners[eventTypeName];
+			if (!eventListenerSet) {
+				this.eventListeners[eventTypeName] = new Set();
+				eventListenerSet = this.eventListeners[eventTypeName];
+			}
+			eventListenerSet.add(listener);
+		}
+
+		/** Remove event, analogous to `removeEventListener` and jQuery's `off` */
+		off(eventTypeName, listener) {
+			const eventListenerSet = this.eventListeners[eventTypeName];
+			if (!eventListenerSet) return;
+			eventListenerSet.delete(listener);
+		}
+
+		/** Trigger an event */
+		trigger(eventTypeName, data) {
+			const eventListenerSet = this.eventListeners[eventTypeName];
+			if (!eventListenerSet) return;
+			eventListenerSet.forEach((listener) => listener(data));
+		}
+	}
+
+	// Events
+	const COMMAND_EVENT = 'command';
+	const MISSING_COMMAND_EVENT = 'missingCommand';
+	const MOUNT_EVENT = 'mount';
+	const UNMOUNT_EVENT = 'unmount';
+	const MAPPING_EVENT = 'mapping';
+	const ALL_EVENTS = [
+		COMMAND_EVENT, MISSING_COMMAND_EVENT, MOUNT_EVENT, UNMOUNT_EVENT, MAPPING_EVENT,
+	];
+	// Other constants
+	const KEY_EVENT = 'keydown'; // Note that keyPress acts different and doesn't trigger for some keys
+
+	class KeyboardCommander extends Observer {
+		constructor(keyCommandMapping = {}, options = {}) {
+			super();
+			// this.state = options.state || 'default';
+			this.mapping = {};
+			this.setMapping(keyCommandMapping);
+			this.document = options.document || window?.document || null;
+			if (!this.document?.addEventListener) throw error('document with addEventListener is required');
+			this.keyPressListener = (event) => this.handleKeyPress(event);
+			// Set up event hooks, if provided
+			this.setupEventListeners(options);
+			// Advanced settings
+			this.nodeNamesDontTrigger = ['TEXTAREA', 'INPUT'];
+			this.nodeNamesAllowDefault = ['TEXTAREA', 'INPUT']; // redundant since they won't get triggered
+			// Start it up - default is to automatically mount
+			if (options.autoMount === undefined || options.autoMount) this.mount();
+		}
+
+		setMapping(mappingParam = {}) {
+			if (typeof mappingParam !== 'object') throw new Error('Invalid type for mapping param');
+			this.mapping = {...mappingParam};
+			this.trigger(MAPPING_EVENT);
+			return this.mapping;
+		}
+
+		mapKey(key, command) {
+			this.mapping[key] = command;
+			this.trigger(MAPPING_EVENT);
+			return true;
+		}
+
+		mapUnmappedKey(key, command) {
+			if (this.mapping[key]) return false; // Don't overwrite a mapping
+			return this.mapKey(key, command);
+		}
+
+		unmapKey(key) {
+			if (this.mapping[key]) return false;
+			delete this.mapping[key];
+			this.trigger(MAPPING_EVENT);
+			return true;
+		}
+
+		mount() {
+			this.document.addEventListener(KEY_EVENT, this.keyPressListener);
+			this.trigger(MOUNT_EVENT);
+		}
+
+		unmount() {
+			this.document.removeEventListener(KEY_EVENT, this.keyPressListener);
+			this.trigger(UNMOUNT_EVENT);
+		}
+
+		handleKeyPress(event) {
+			// https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
+			const { key, code, keyCode, altKey, ctrlKey, shiftKey, metaKey, repeat } = event;
+			const details = { code, keyCode, altKey, ctrlKey, shiftKey, metaKey, repeat };
+			const { nodeName } = event.target;
+			if (this.nodeNamesDontTrigger.includes(nodeName)) return;
+			if (!this.nodeNamesAllowDefault.includes(nodeName)) {
+				event.preventDefault();
+			}
+			this.triggerKey(key, details);
+		}
+
+		setupEventListeners(listenersObj = {}) {
+			ALL_EVENTS.forEach((eventName) => {
+				// Assumes that the value will be a function
+				if (listenersObj[eventName]) this.on(eventName, listenersObj[eventName]);
+			});
+		}
+
+		triggerCommand(command) {
+			this.trigger(COMMAND_EVENT, command);
+		}
+
+		triggerMissingCommand(key) {
+			// console.warn('No command for', key);
+			this.trigger(MISSING_COMMAND_EVENT, key);
+		}
+
+		triggerKey(key, details = {}) {
+			const command = this.mapping[key];
+			// TODO: Look at details and handle them in the mapping
+			if (command) {
+				this.triggerCommand(command);
+			} else {
+				this.triggerMissingCommand(key);
+			}
+		}
+
+		getKeysMapped() {
+			return Object.keys(this.mapping);
+		}
+
+		getCommands() {
+			const uniqueCommands = new Set();
+			this.getKeysMapped().forEach((key) => uniqueCommands.add(this.mapping[key]));
+			return Array.from(uniqueCommands);
+		}
+	}
+
+	class PointerLocker extends Observer {
+		constructor(options = {}) {
+			super();
+			this.selector = options.selector || 'canvas';
+			this.unlockEventName = options.unlockEventName || 'mousedown'; // contextmenu, click
+			this.lockEventName = options.lockEventName || 'mousedown'; // or click
+			this.clickTypes = ['click', 'mouseup', 'mousedown'];
+			this.lockButton = 3;
+			this.unlockButton = 3;
+			this.handleLockedMouseMove = (event) => {
+				const x = event.movementX;
+				const y = event.movementY;
+				this.trigger('lockedMouseMove', { x, y });
+				// console.log({ x, y });
+			};
+			this.handleLock = async (event) => {
+				console.log('handleLock', event);
+				if (this.clickTypes.includes(event.type)) {
+					if (event.which !== this.lockButton) return;
+				}
+				console.log('Preventing default, then locking');
+				event.preventDefault();
+				await this.lock();
+			};
+			this.handleLockUnlock = async (event) => {
+				console.log('handleLockUnlock - isLocked?', this.isLocked());
+				if (this.isLocked()) {
+					await this.handleUnlock(event);
+					return;
+				}
+				await this.handleLock(event);
+			};
+			this.handleUnlock = async (event) => {
+				console.log('handleUnlock', event);
+				if (this.clickTypes.includes(event.type)) {
+					if (event.which !== this.unlockButton) return;
+				}
+				console.log('Preventing default, then locking');
+				event.preventDefault();
+				await this.unlock();
+			};
+			this.doc = window.document;
+			if (this.getElement()) this.setup();
+		}
+
+		getElement() {
+			return this.doc.querySelector(this.selector);
+		}
+
+		isLocked() {
+			return Boolean(this.doc.pointerLockElement);
+		}
+
+		async toggleLock() {
+			const methodName = (this.isLocked()) ? 'unlock' : 'lock';
+			await this[methodName]();
+		}
+
+		async lock() {
+			if (this.doc.pointerLockElement) {
+				console.warn('already locked');
+				return;
+			}
+			await this.getElement().requestPointerLock();
+		}
+
+		async unlock() {
+			const elt = this.getElement();
+			if (this.doc.pointerLockElement !== elt) {
+				console.warn('pointerLockElement is not element we expected. Cannot unlock.', this.doc.pointerLockElement);
+				return;
+			}
+			await document.exitPointerLock();
+		}
+
+		setup() {
+			const elt = this.getElement();
+			this.doc.addEventListener('pointerlockchange', () => {
+				if (this.doc.pointerLockElement === elt) {
+					this.doc.addEventListener('mousemove', this.handleLockedMouseMove, false);
+				} else {
+					this.doc.removeEventListener('mousemove', this.handleLockedMouseMove, false);
+				}
+			});
+			if (this.unlockEventName === this.lockEventName) {
+				elt.addEventListener(this.lockEventName, this.handleLockUnlock, false);
+			} else {
+				elt.addEventListener(this.unlockEventName, this.handleUnlock, false);
+				elt.addEventListener(this.lockEventName, this.handleLock, false);
+			}
+			return this;
+		}
+	}
+
 	/**
 	 * @license
 	 * Copyright 2010-2023 Three.js Authors
@@ -249,7 +487,7 @@
 
 	}
 
-	function clamp( value, min, max ) {
+	function clamp$1( value, min, max ) {
 
 		return Math.max( min, Math.min( max, value ) );
 
@@ -711,7 +949,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp( theta, - 1, 1 ) );
+			return Math.acos( clamp$1( theta, - 1, 1 ) );
 
 		}
 
@@ -3075,7 +3313,7 @@
 
 		angleTo( q ) {
 
-			return 2 * Math.acos( Math.abs( clamp( this.dot( q ), - 1, 1 ) ) );
+			return 2 * Math.acos( Math.abs( clamp$1( this.dot( q ), - 1, 1 ) ) );
 
 		}
 
@@ -3892,7 +4130,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp( theta, - 1, 1 ) );
+			return Math.acos( clamp$1( theta, - 1, 1 ) );
 
 		}
 
@@ -6296,7 +6534,7 @@
 
 				case 'XYZ':
 
-					this._y = Math.asin( clamp( m13, - 1, 1 ) );
+					this._y = Math.asin( clamp$1( m13, - 1, 1 ) );
 
 					if ( Math.abs( m13 ) < 0.9999999 ) {
 
@@ -6314,7 +6552,7 @@
 
 				case 'YXZ':
 
-					this._x = Math.asin( - clamp( m23, - 1, 1 ) );
+					this._x = Math.asin( - clamp$1( m23, - 1, 1 ) );
 
 					if ( Math.abs( m23 ) < 0.9999999 ) {
 
@@ -6332,7 +6570,7 @@
 
 				case 'ZXY':
 
-					this._x = Math.asin( clamp( m32, - 1, 1 ) );
+					this._x = Math.asin( clamp$1( m32, - 1, 1 ) );
 
 					if ( Math.abs( m32 ) < 0.9999999 ) {
 
@@ -6350,7 +6588,7 @@
 
 				case 'ZYX':
 
-					this._y = Math.asin( - clamp( m31, - 1, 1 ) );
+					this._y = Math.asin( - clamp$1( m31, - 1, 1 ) );
 
 					if ( Math.abs( m31 ) < 0.9999999 ) {
 
@@ -6368,7 +6606,7 @@
 
 				case 'YZX':
 
-					this._z = Math.asin( clamp( m21, - 1, 1 ) );
+					this._z = Math.asin( clamp$1( m21, - 1, 1 ) );
 
 					if ( Math.abs( m21 ) < 0.9999999 ) {
 
@@ -6386,7 +6624,7 @@
 
 				case 'XZY':
 
-					this._z = Math.asin( - clamp( m12, - 1, 1 ) );
+					this._z = Math.asin( - clamp$1( m12, - 1, 1 ) );
 
 					if ( Math.abs( m12 ) < 0.9999999 ) {
 
@@ -8449,8 +8687,8 @@
 
 			// h,s,l ranges are in 0.0 - 1.0
 			h = euclideanModulo( h, 1 );
-			s = clamp( s, 0, 1 );
-			l = clamp( l, 0, 1 );
+			s = clamp$1( s, 0, 1 );
+			l = clamp$1( l, 0, 1 );
 
 			if ( s === 0 ) {
 
@@ -8674,7 +8912,7 @@
 
 			ColorManagement.fromWorkingColorSpace( _color.copy( this ), colorSpace );
 
-			return clamp( _color.r * 255, 0, 255 ) << 16 ^ clamp( _color.g * 255, 0, 255 ) << 8 ^ clamp( _color.b * 255, 0, 255 ) << 0;
+			return clamp$1( _color.r * 255, 0, 255 ) << 16 ^ clamp$1( _color.g * 255, 0, 255 ) << 8 ^ clamp$1( _color.b * 255, 0, 255 ) << 0;
 
 		}
 
@@ -29076,6 +29314,313 @@
 
 	}
 
+	class LineBasicMaterial extends Material {
+
+		constructor( parameters ) {
+
+			super();
+
+			this.isLineBasicMaterial = true;
+
+			this.type = 'LineBasicMaterial';
+
+			this.color = new Color( 0xffffff );
+
+			this.map = null;
+
+			this.linewidth = 1;
+			this.linecap = 'round';
+			this.linejoin = 'round';
+
+			this.fog = true;
+
+			this.setValues( parameters );
+
+		}
+
+
+		copy( source ) {
+
+			super.copy( source );
+
+			this.color.copy( source.color );
+
+			this.map = source.map;
+
+			this.linewidth = source.linewidth;
+			this.linecap = source.linecap;
+			this.linejoin = source.linejoin;
+
+			this.fog = source.fog;
+
+			return this;
+
+		}
+
+	}
+
+	const _start$1 = /*@__PURE__*/ new Vector3();
+	const _end$1 = /*@__PURE__*/ new Vector3();
+	const _inverseMatrix$1 = /*@__PURE__*/ new Matrix4();
+	const _ray$1 = /*@__PURE__*/ new Ray();
+	const _sphere$1 = /*@__PURE__*/ new Sphere();
+
+	class Line extends Object3D {
+
+		constructor( geometry = new BufferGeometry(), material = new LineBasicMaterial() ) {
+
+			super();
+
+			this.isLine = true;
+
+			this.type = 'Line';
+
+			this.geometry = geometry;
+			this.material = material;
+
+			this.updateMorphTargets();
+
+		}
+
+		copy( source, recursive ) {
+
+			super.copy( source, recursive );
+
+			this.material = source.material;
+			this.geometry = source.geometry;
+
+			return this;
+
+		}
+
+		computeLineDistances() {
+
+			const geometry = this.geometry;
+
+			// we assume non-indexed geometry
+
+			if ( geometry.index === null ) {
+
+				const positionAttribute = geometry.attributes.position;
+				const lineDistances = [ 0 ];
+
+				for ( let i = 1, l = positionAttribute.count; i < l; i ++ ) {
+
+					_start$1.fromBufferAttribute( positionAttribute, i - 1 );
+					_end$1.fromBufferAttribute( positionAttribute, i );
+
+					lineDistances[ i ] = lineDistances[ i - 1 ];
+					lineDistances[ i ] += _start$1.distanceTo( _end$1 );
+
+				}
+
+				geometry.setAttribute( 'lineDistance', new Float32BufferAttribute( lineDistances, 1 ) );
+
+			} else {
+
+				console.warn( 'THREE.Line.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.' );
+
+			}
+
+			return this;
+
+		}
+
+		raycast( raycaster, intersects ) {
+
+			const geometry = this.geometry;
+			const matrixWorld = this.matrixWorld;
+			const threshold = raycaster.params.Line.threshold;
+			const drawRange = geometry.drawRange;
+
+			// Checking boundingSphere distance to ray
+
+			if ( geometry.boundingSphere === null ) geometry.computeBoundingSphere();
+
+			_sphere$1.copy( geometry.boundingSphere );
+			_sphere$1.applyMatrix4( matrixWorld );
+			_sphere$1.radius += threshold;
+
+			if ( raycaster.ray.intersectsSphere( _sphere$1 ) === false ) return;
+
+			//
+
+			_inverseMatrix$1.copy( matrixWorld ).invert();
+			_ray$1.copy( raycaster.ray ).applyMatrix4( _inverseMatrix$1 );
+
+			const localThreshold = threshold / ( ( this.scale.x + this.scale.y + this.scale.z ) / 3 );
+			const localThresholdSq = localThreshold * localThreshold;
+
+			const vStart = new Vector3();
+			const vEnd = new Vector3();
+			const interSegment = new Vector3();
+			const interRay = new Vector3();
+			const step = this.isLineSegments ? 2 : 1;
+
+			const index = geometry.index;
+			const attributes = geometry.attributes;
+			const positionAttribute = attributes.position;
+
+			if ( index !== null ) {
+
+				const start = Math.max( 0, drawRange.start );
+				const end = Math.min( index.count, ( drawRange.start + drawRange.count ) );
+
+				for ( let i = start, l = end - 1; i < l; i += step ) {
+
+					const a = index.getX( i );
+					const b = index.getX( i + 1 );
+
+					vStart.fromBufferAttribute( positionAttribute, a );
+					vEnd.fromBufferAttribute( positionAttribute, b );
+
+					const distSq = _ray$1.distanceSqToSegment( vStart, vEnd, interRay, interSegment );
+
+					if ( distSq > localThresholdSq ) continue;
+
+					interRay.applyMatrix4( this.matrixWorld ); //Move back to world space for distance calculation
+
+					const distance = raycaster.ray.origin.distanceTo( interRay );
+
+					if ( distance < raycaster.near || distance > raycaster.far ) continue;
+
+					intersects.push( {
+
+						distance: distance,
+						// What do we want? intersection point on the ray or on the segment??
+						// point: raycaster.ray.at( distance ),
+						point: interSegment.clone().applyMatrix4( this.matrixWorld ),
+						index: i,
+						face: null,
+						faceIndex: null,
+						object: this
+
+					} );
+
+				}
+
+			} else {
+
+				const start = Math.max( 0, drawRange.start );
+				const end = Math.min( positionAttribute.count, ( drawRange.start + drawRange.count ) );
+
+				for ( let i = start, l = end - 1; i < l; i += step ) {
+
+					vStart.fromBufferAttribute( positionAttribute, i );
+					vEnd.fromBufferAttribute( positionAttribute, i + 1 );
+
+					const distSq = _ray$1.distanceSqToSegment( vStart, vEnd, interRay, interSegment );
+
+					if ( distSq > localThresholdSq ) continue;
+
+					interRay.applyMatrix4( this.matrixWorld ); //Move back to world space for distance calculation
+
+					const distance = raycaster.ray.origin.distanceTo( interRay );
+
+					if ( distance < raycaster.near || distance > raycaster.far ) continue;
+
+					intersects.push( {
+
+						distance: distance,
+						// What do we want? intersection point on the ray or on the segment??
+						// point: raycaster.ray.at( distance ),
+						point: interSegment.clone().applyMatrix4( this.matrixWorld ),
+						index: i,
+						face: null,
+						faceIndex: null,
+						object: this
+
+					} );
+
+				}
+
+			}
+
+		}
+
+		updateMorphTargets() {
+
+			const geometry = this.geometry;
+
+			const morphAttributes = geometry.morphAttributes;
+			const keys = Object.keys( morphAttributes );
+
+			if ( keys.length > 0 ) {
+
+				const morphAttribute = morphAttributes[ keys[ 0 ] ];
+
+				if ( morphAttribute !== undefined ) {
+
+					this.morphTargetInfluences = [];
+					this.morphTargetDictionary = {};
+
+					for ( let m = 0, ml = morphAttribute.length; m < ml; m ++ ) {
+
+						const name = morphAttribute[ m ].name || String( m );
+
+						this.morphTargetInfluences.push( 0 );
+						this.morphTargetDictionary[ name ] = m;
+
+					}
+
+				}
+
+			}
+
+		}
+
+	}
+
+	const _start = /*@__PURE__*/ new Vector3();
+	const _end = /*@__PURE__*/ new Vector3();
+
+	class LineSegments extends Line {
+
+		constructor( geometry, material ) {
+
+			super( geometry, material );
+
+			this.isLineSegments = true;
+
+			this.type = 'LineSegments';
+
+		}
+
+		computeLineDistances() {
+
+			const geometry = this.geometry;
+
+			// we assume non-indexed geometry
+
+			if ( geometry.index === null ) {
+
+				const positionAttribute = geometry.attributes.position;
+				const lineDistances = [];
+
+				for ( let i = 0, l = positionAttribute.count; i < l; i += 2 ) {
+
+					_start.fromBufferAttribute( positionAttribute, i );
+					_end.fromBufferAttribute( positionAttribute, i + 1 );
+
+					lineDistances[ i ] = ( i === 0 ) ? 0 : lineDistances[ i - 1 ];
+					lineDistances[ i + 1 ] = lineDistances[ i ] + _start.distanceTo( _end );
+
+				}
+
+				geometry.setAttribute( 'lineDistance', new Float32BufferAttribute( lineDistances, 1 ) );
+
+			} else {
+
+				console.warn( 'THREE.LineSegments.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.' );
+
+			}
+
+			return this;
+
+		}
+
+	}
+
 	class MeshStandardMaterial extends Material {
 
 		constructor( parameters ) {
@@ -29185,6 +29730,102 @@
 			this.wireframeLinejoin = source.wireframeLinejoin;
 
 			this.flatShading = source.flatShading;
+
+			this.fog = source.fog;
+
+			return this;
+
+		}
+
+	}
+
+	class MeshToonMaterial extends Material {
+
+		constructor( parameters ) {
+
+			super();
+
+			this.isMeshToonMaterial = true;
+
+			this.defines = { 'TOON': '' };
+
+			this.type = 'MeshToonMaterial';
+
+			this.color = new Color( 0xffffff );
+
+			this.map = null;
+			this.gradientMap = null;
+
+			this.lightMap = null;
+			this.lightMapIntensity = 1.0;
+
+			this.aoMap = null;
+			this.aoMapIntensity = 1.0;
+
+			this.emissive = new Color( 0x000000 );
+			this.emissiveIntensity = 1.0;
+			this.emissiveMap = null;
+
+			this.bumpMap = null;
+			this.bumpScale = 1;
+
+			this.normalMap = null;
+			this.normalMapType = TangentSpaceNormalMap;
+			this.normalScale = new Vector2( 1, 1 );
+
+			this.displacementMap = null;
+			this.displacementScale = 1;
+			this.displacementBias = 0;
+
+			this.alphaMap = null;
+
+			this.wireframe = false;
+			this.wireframeLinewidth = 1;
+			this.wireframeLinecap = 'round';
+			this.wireframeLinejoin = 'round';
+
+			this.fog = true;
+
+			this.setValues( parameters );
+
+		}
+
+		copy( source ) {
+
+			super.copy( source );
+
+			this.color.copy( source.color );
+
+			this.map = source.map;
+			this.gradientMap = source.gradientMap;
+
+			this.lightMap = source.lightMap;
+			this.lightMapIntensity = source.lightMapIntensity;
+
+			this.aoMap = source.aoMap;
+			this.aoMapIntensity = source.aoMapIntensity;
+
+			this.emissive.copy( source.emissive );
+			this.emissiveMap = source.emissiveMap;
+			this.emissiveIntensity = source.emissiveIntensity;
+
+			this.bumpMap = source.bumpMap;
+			this.bumpScale = source.bumpScale;
+
+			this.normalMap = source.normalMap;
+			this.normalMapType = source.normalMapType;
+			this.normalScale.copy( source.normalScale );
+
+			this.displacementMap = source.displacementMap;
+			this.displacementScale = source.displacementScale;
+			this.displacementBias = source.displacementBias;
+
+			this.alphaMap = source.alphaMap;
+
+			this.wireframe = source.wireframe;
+			this.wireframeLinewidth = source.wireframeLinewidth;
+			this.wireframeLinecap = source.wireframeLinecap;
+			this.wireframeLinejoin = source.wireframeLinejoin;
 
 			this.fog = source.fog;
 
@@ -29897,6 +30538,56 @@
 
 	}
 
+	class DirectionalLightShadow extends LightShadow {
+
+		constructor() {
+
+			super( new OrthographicCamera( - 5, 5, 5, - 5, 0.5, 500 ) );
+
+			this.isDirectionalLightShadow = true;
+
+		}
+
+	}
+
+	class DirectionalLight extends Light {
+
+		constructor( color, intensity ) {
+
+			super( color, intensity );
+
+			this.isDirectionalLight = true;
+
+			this.type = 'DirectionalLight';
+
+			this.position.copy( Object3D.DEFAULT_UP );
+			this.updateMatrix();
+
+			this.target = new Object3D();
+
+			this.shadow = new DirectionalLightShadow();
+
+		}
+
+		dispose() {
+
+			this.shadow.dispose();
+
+		}
+
+		copy( source ) {
+
+			super.copy( source );
+
+			this.target = source.target.clone();
+			this.shadow = source.shadow.clone();
+
+			return this;
+
+		}
+
+	}
+
 	class AmbientLight extends Light {
 
 		constructor( color, intensity ) {
@@ -29906,6 +30597,66 @@
 			this.isAmbientLight = true;
 
 			this.type = 'AmbientLight';
+
+		}
+
+	}
+
+	class AxesHelper extends LineSegments {
+
+		constructor( size = 1 ) {
+
+			const vertices = [
+				0, 0, 0,	size, 0, 0,
+				0, 0, 0,	0, size, 0,
+				0, 0, 0,	0, 0, size
+			];
+
+			const colors = [
+				1, 0, 0,	1, 0.6, 0,
+				0, 1, 0,	0.6, 1, 0,
+				0, 0, 1,	0, 0.6, 1
+			];
+
+			const geometry = new BufferGeometry();
+			geometry.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
+			geometry.setAttribute( 'color', new Float32BufferAttribute( colors, 3 ) );
+
+			const material = new LineBasicMaterial( { vertexColors: true, toneMapped: false } );
+
+			super( geometry, material );
+
+			this.type = 'AxesHelper';
+
+		}
+
+		setColors( xAxisColor, yAxisColor, zAxisColor ) {
+
+			const color = new Color();
+			const array = this.geometry.attributes.color.array;
+
+			color.set( xAxisColor );
+			color.toArray( array, 0 );
+			color.toArray( array, 3 );
+
+			color.set( yAxisColor );
+			color.toArray( array, 6 );
+			color.toArray( array, 9 );
+
+			color.set( zAxisColor );
+			color.toArray( array, 12 );
+			color.toArray( array, 15 );
+
+			this.geometry.attributes.color.needsUpdate = true;
+
+			return this;
+
+		}
+
+		dispose() {
+
+			this.geometry.dispose();
+			this.material.dispose();
 
 		}
 
@@ -29973,6 +30724,711 @@
 		}
 	}
 
+	// import noise from 'noise-esm';
+
+	class DinoScene {
+		constructor() {
+			// Settings
+			this.gridConversion = [1, 1, -1];
+			this.coordsConversion = [1, 1, 1];
+			this.gridSquareSize = 20;
+			this.clearColor = '#344';
+			this.fov = 75;
+			this.eyeLightColor = 0xffffff;
+			this.eyeLightIntensity = 0.9;
+			this.eyeLightDistance = 100;
+			this.chunkSize = 128; // In grid units
+			this.terrainSegments = 256;
+			// Instantiated things
+			this.eyeLight = null;
+			this.scene = null;
+			this.renderer = null;
+			this.autoFacingObjects = [];
+			this.camera = null;
+			this.worldGroup = null;
+			this.entitySceneObjects = {}; // keyed by the entity's unique entityId
+			this.chunkTerrains = [];
+		}
+
+		// convertGridToRenderingVector3(gridCoords) {
+		// 	const [x = 0, y = 0, z = 0] = gridCoords;
+		// 	const [convX, convY, convZ] = this.gridConversion;
+		// 	return new Vector3(
+		// 		x * this.gridSquareSize * convX,
+		// 		y * this.gridSquareSize * convY,
+		// 		z * this.gridSquareSize * convZ,
+		// 	);
+		// }
+
+		static convertCoordsToVector3(coords) {
+			const [x = 0, y = 0, z = 0] = coords;
+			return new Vector3(x, y, z);
+		}
+
+		convertCoordsToVector3(coords) {
+			const [x = 0, y = 0, z = 0] = coords;
+			const [convX, convY, convZ] = this.coordsConversion;
+			return new Vector3(x * convX, y * convY, z * convZ);
+		}
+
+		makeCamera([x = 0, y = 0, z = 0] = []) {
+			const aspect = window.innerWidth / window.innerHeight;
+			const camera = new PerspectiveCamera(this.fov, aspect, 0.1, 100000);
+			camera.position.x = x;
+			camera.position.y = y;
+			camera.position.z = z;
+			return camera;
+		}
+
+		makeLight() {
+			const color = 0xFFFFFF;
+			const intensity = 0.05;
+			const light = new DirectionalLight(color, intensity);
+			light.position.set(0, 100, 40);
+			light.lookAt(new Vector3());
+			this.scene.add(light);
+
+			// const { eyeLightColor, eyeLightIntensity, eyeLightDistance } = this;
+			// this.eyeLight = new THREE.PointLight(eyeLightColor, eyeLightIntensity, eyeLightDistance);
+			// this.scene.add(this.eyeLight);
+
+			const pointLight = new PointLight(0xffffff, 0.25, 1000);
+			pointLight.position.set(0, 0, 100);
+			// pointLight.lookAt(new Vector3());
+			this.scene.add(pointLight);
+
+			const ambientLight = new AmbientLight(0x404040, 0.5);
+			this.scene.add(ambientLight);
+
+			// const sphereSize = 1;
+			// const pointLightHelper = new THREE.PointLightHelper(pointLight, sphereSize);
+			// this.scene.add(pointLightHelper);
+		}
+
+		setupRenderer() {
+			this.renderer = new Renderer();
+			this.renderer.setClearColor(this.clearColor);
+		}
+
+		setup(cameraCoords) {
+			if (!this.renderer) this.setupRenderer();
+			this.scene = new Scene();
+			this.worldGroup = new Group();
+			this.scene.add(this.worldGroup);
+			this.camera = this.makeCamera(cameraCoords);
+			this.camera.lookAt(new Vector3(0, 0, 0));
+			this.makeLight();
+			this.entitySceneObjects = {};
+			const axesHelper = new AxesHelper(5);
+			this.scene.add(axesHelper);
+			return this;
+		}
+
+		update(options = {}) {
+			const { cameraPosition, cameraRotation, worldCoords, entities, terrainChunks } = options;
+			if (cameraPosition) {
+				this.camera.position.copy(DinoScene.convertCoordsToVector3(cameraPosition));
+				this.camera.lookAt(new Vector3());
+			}
+			if (cameraRotation) {
+				// this.camera.rotation.copy(DinoScene.convertCoordsToVector3(cameraPosition));
+				this.camera.lookAt(new Vector3());
+			}
+			if (worldCoords) {
+				this.worldGroup.position.copy(DinoScene.convertCoordsToVector3(worldCoords));
+			}
+			if (entities) {
+				entities.forEach((entity) => {
+					const sceneObj = this.entitySceneObjects[entity.entityId];
+					if (sceneObj) {
+						sceneObj.position.copy(DinoScene.convertCoordsToVector3(entity.coords));
+						sceneObj.rotation.set(0, entity.facing, 0);
+						// TODO: see if position or anything else has changed
+					} else {
+						this.addNewWorldEntity(entity);
+					}
+				});
+			}
+			if (terrainChunks) {
+				terrainChunks.forEach((chunk) => {
+					const sceneObj = this.entitySceneObjects[chunk.entityId];
+					if (sceneObj) ; else {
+						this.addNewTerrainChunkPlane(chunk);
+					}
+				});
+			}
+			return this;
+		}
+
+		render() {
+			this.autoFacingObjects.forEach((obj) => {
+				obj.quaternion.copy(this.camera.quaternion);
+			});
+			this.renderer.render(this.scene, this.camera);
+			return this;
+		}
+
+		static loadTexture(src) {
+			const loader = new TextureLoader().setPath('images/');
+			return new Promise((resolve, reject) => {
+				loader.load(src, resolve, null, reject);
+			});
+		}
+
+		makeBox() {
+			const box = new BoxGeometry(10, 20, 10);
+			const material = new MeshToonMaterial({ color: 0xff0000, flatShading: true });
+			const boxMesh = new Mesh(box, material);
+			return boxMesh;
+		}
+
+		makeTerrain(heightMap) {
+			const size = this.chunkSize * this.gridSquareSize;
+			console.log(this, size);
+			const geometry = new PlaneGeometry(size, size, this.terrainSegments, this.terrainSegments);
+			// heightMap.wrapS = THREE.RepeatWrapping;
+			// heightMap.wrapT = THREE.RepeatWrapping;
+
+			// set the height of each vertex based on the color of the corresponding pixel in the heightmap
+			// const vertices = geometry.attributes.position.array;
+			// const imageData = heightMap.image.data;
+			// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 4) {
+			// 	vertices[i] = (imageData[j] + imageData[j + 1] + imageData[j + 2]) / 3;
+			// }
+
+			// const noiseScale = 0.001;
+			// const vertices = geometry.attributes.position.array;
+			// const len = this.terrainSegments ** 2; // vertices.length
+			// for (let i = 0, j = 0, l = len; i < l; i += 3, j += 1) {
+			// 	vertices[i] = 0;
+			// 	vertices[i + 2] = 0;
+			// 	const x = vertices[i];
+			// 	const z = vertices[i + 2];
+			// 	const y = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * z, 0)));
+			// 	vertices[i + 1] = 0; // y;
+			// }
+			// geometry.setFromPoints(vertices);
+
+			const { position } = geometry.attributes;
+			let h = 0;
+			for (let i = 0; i < position.count; i += 1) {
+				h = ((h * 2) + (Math.random() * 100)) / 3;
+				position.setZ(i, h);
+			}
+			position.needsUpdate = true;
+
+			const material = new MeshStandardMaterial({
+				color: 0x55ffbb,
+				// wireframe: true,
+				side: DoubleSide,
+				// displacementMap: heightMap,
+				// displacementScale: 30,
+				flatShading: true,
+			});
+
+			// create the mesh for the terrain
+			const terrain = new Mesh(geometry, material);
+
+			terrain.position.x = 0;
+			terrain.position.y = -10;
+			terrain.position.z = 0;
+
+			// rotate the terrain to make it look like hills and valleys
+			terrain.rotation.x = -Math.PI / 2;
+			return terrain;
+		}
+
+		async addNewTerrainByHeightMap(heightMapImageSrc) {
+			const heightMap = await DinoScene.loadTexture(heightMapImageSrc);
+			const terrain = this.makeTerrain(heightMap);
+			window.terrain = terrain;
+			this.chunkTerrains.push(terrain);
+			this.worldGroup.add(terrain); // add the terrain to the scene
+		}
+
+		applyHeightsToGeometry(geometry, heights, size) {
+			const { position } = geometry.attributes;
+			// let h = 0;
+			for (let i = 0; i < position.count; i += 1) {
+				// h = ((h * 2) + (Math.random() * 100)) / 3;
+				const y = Math.floor(i / size);
+				const x = i % size;
+				if (!heights[y]) {
+					console.warn('No heights[y]', i, x, y, 'size', size);
+					continue;
+				}
+				const h = heights[y][x];
+				position.setZ(i, h);
+			}
+			position.needsUpdate = true;
+		}
+
+		makeTerrainChunkPlane(terrainChunk = {}) {
+			const { heights, segments, size } = terrainChunk;
+			const geometry = new PlaneGeometry(size, size, segments, segments);
+			// heightMap.wrapS = THREE.RepeatWrapping;
+			// heightMap.wrapT = THREE.RepeatWrapping;
+
+			this.applyHeightsToGeometry(geometry, heights, segments);
+
+			const material = new MeshStandardMaterial({
+				color: 0x55ffbb,
+				// wireframe: true,
+				side: DoubleSide,
+				// displacementMap: heightMap,
+				// displacementScale: 30,
+				flatShading: true,
+			});
+
+			// create the mesh for the terrain
+			const terrain = new Mesh(geometry, material);
+
+			terrain.position.x = 0;
+			terrain.position.y = 0;
+			terrain.position.z = 0;
+
+			// rotate the terrain to make it look like hills and valleys
+			terrain.rotation.x = -Math.PI / 2;
+			return terrain;
+		}
+
+		addNewTerrainChunkPlane(terrainChunk) {
+			const terrain = this.makeTerrainChunkPlane(terrainChunk);
+			this.chunkTerrains.push(terrain);
+			this.worldGroup.add(terrain); // add the terrain to the scene
+			this.entitySceneObjects[terrainChunk.entityId] = terrain;
+		}
+
+		addNewWorldEntity(entity) {
+			const box = this.makeBox();
+			box.position.copy(this.convertCoordsToVector3(entity.coords));
+			this.worldGroup.add(box);
+			this.entitySceneObjects[entity.entityId] = box;
+		}
+	}
+
+	// import { clamp } from 'three/src/math/mathutils.js';
+	const clamp = (v, min = 0, max = 1) => v < min ? min : v > max ? max : v;
+
+	const WHEEL_PX = 25;
+	const WHEEL_EVENT = 'wheel';
+
+	class MouseWheelWatcher {
+		constructor({ y = 0, watch = true, min = -1000, max = 1000 } = {}) {
+			this.y = y;
+			this.min = min;
+			this.max = max;
+			this.lastMouseWheelDeltaY = 0;
+			this.listener = () => {};
+			if (watch) this.watch();
+		}
+
+		get mouseWheel() {
+			return this.lastMouseWheelDeltaY;
+		}
+
+		set mouseWheel(n) {
+			this.lastMouseWheelDeltaY = n;
+			this.y = clamp(this.y + n, this.min, this.max);
+		}
+
+		get percent() { return this.getPercent(); }
+		set percent(n) { throw new Error('cannot set percent'); }
+
+		getPercent() {
+			const d = (this.y > 0) ? this.max : this.min * -1;
+			return (d === 0) ? 0 : this.y / d;
+		}
+
+		watch() {
+			const listener = (e) => {
+				if (e.ctrlKey) return;
+				this.mouseWheel = e.deltaY / WHEEL_PX;
+			};
+			this.listener = listener;
+			window.addEventListener(WHEEL_EVENT, listener);
+		}
+
+		unwatch() {
+			window.removeEventListener(WHEEL_EVENT, this.listener);
+		}
+
+		clear() {
+			this.mouseWheel = 0;
+		}
+
+		update() {
+			this.clear();
+		}
+	}
+
+	// Constants
+	const NORTH = 0;
+	const EAST = 1;
+	const SOUTH = 2;
+	const WEST = 3;
+	const X$1 = 0;
+	const Y$1 = 1;
+	const Z$1 = 2;
+	const DIRECTION_NAMES = Object.freeze(['North', 'East', 'South', 'West']);
+	const DIRECTIONS = Object.freeze([NORTH, EAST, SOUTH, WEST]);
+	const RADIANS = Object.freeze([0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]);
+
+	//       /^\ -y North
+	// West   |
+	// -x <---o---> +x East
+	//        |
+	//       \./ +y South
+
+	class ArrayCoords {
+		static getRelativeCoordsInDirection(coords, facing, forward = 0, strafe = 0, up = 0) {
+			const newCoords = [...coords];
+			const facingEastWest = (facing % 2);
+			const forwardAxis = facingEastWest ? X$1 : Y$1;
+			const strafeAxis = facingEastWest ? Y$1 : X$1;
+			const forwardDirection = (facing === NORTH || facing === WEST) ? -1 : 1;
+			const strafeDirection = (facing === NORTH || facing === EAST) ? 1 : -1;
+			newCoords[forwardAxis] += (forward * forwardDirection);
+			newCoords[strafeAxis] += (strafe * strafeDirection);
+			newCoords[Z$1] += up;
+			return newCoords;
+		}
+
+		static normalizeDirection(facing) {
+			const fixedFacing = facing % DIRECTIONS.length;
+			return (fixedFacing < 0) ? (DIRECTIONS.length + fixedFacing) : fixedFacing;
+		}
+
+		static getDirectionName(facingParam) {
+			const facing = ArrayCoords.normalizeDirection(facingParam);
+			return DIRECTION_NAMES[facing];
+		}
+
+		static getDirectionRadians(facingParam) {
+			const facing = ArrayCoords.normalizeDirection(facingParam);
+			return RADIANS[facing];
+		}
+
+		static getDistance(coords1, coords2) {
+			return Math.sqrt(
+				(coords2[X$1] - coords1[X$1]) ** 2
+				+ (coords2[Y$1] - coords1[Y$1]) ** 2
+				+ (coords2[Z$1] - coords1[Z$1]) ** 2,
+			);
+		}
+
+		static checkEqual(coords1, coords2) {
+			return (coords1[X$1] === coords2[X$1] && coords1[Y$1] === coords2[Y$1] && coords1[Z$1] === coords2[Z$1]);
+		}
+
+		static subtract(coords1, coords2) {
+			return [coords1[X$1] - coords2[X$1], coords1[Y$1] - coords2[Y$1], coords1[Z$1] - coords2[Z$1]];
+		}
+
+		static add(coords1, coords2) {
+			return [coords1[X$1] + coords2[X$1], coords1[Y$1] + coords2[Y$1], coords1[Z$1] + coords2[Z$1]];
+		}
+	}
+
+	// Indices
+	ArrayCoords.X = X$1;
+	ArrayCoords.Y = Y$1;
+	ArrayCoords.Z = Z$1;
+	ArrayCoords.NORTH = NORTH;
+	ArrayCoords.EAST = EAST;
+	ArrayCoords.SOUTH = SOUTH;
+	ArrayCoords.WEST = WEST;
+	ArrayCoords.DIRECTIONS = DIRECTIONS;
+
+	const MAGIC_NUMBER = 10000;
+	const SEED_MAGIC_INT = 9999999;
+	const SEED_MAGIC_BOOL_TRUE = 93759;
+	const SEED_MAGIC_BOOL_FALSE = 1012638;
+	const RADIX$1 = 36;
+
+	class PseudoRandomizer {
+		constructor(seed) {
+			if (typeof seed === 'number') {
+				this.seed = seed;
+			} else if (seed instanceof Array) {
+				this.seed = PseudoRandomizer.makeSeed(seed);
+			} else {
+				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
+			}
+			if (Number.isNaN(this.seed)) {
+				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
+			}
+			this.initialSeed = this.seed;
+		}
+
+		static convertStringToRadixSafeString(str = '') {
+			return String(str).split('').map((char) => {
+				const int = parseInt(char, RADIX$1);
+				return (Number.isNaN(int)) ? char.charCodeAt(0).toString(RADIX$1) : char;
+			}).join('');
+		}
+
+		static convertStringToNumber(str = '') {
+			return parseInt(PseudoRandomizer.convertStringToRadixSafeString(str), RADIX$1);
+		}
+
+		static makeSeed(arr = []) {
+			const seed = arr.reduce((sum, value) => {
+				const typeOfValue = typeof value;
+				let num = 1;
+				if (typeOfValue === 'number') {
+					num = value;
+				} else if (typeOfValue === 'object') {
+					num = parseInt(JSON.stringify(value), RADIX$1);
+				} else if (typeOfValue === 'string') {
+					num = parseInt(value, RADIX$1);
+				} else if (typeOfValue === 'boolean') {
+					num = (value ? SEED_MAGIC_BOOL_TRUE : SEED_MAGIC_BOOL_FALSE);
+				}
+				return PseudoRandomizer.getPseudoRandInt(sum, SEED_MAGIC_INT) + num;
+			}, 0);
+			return seed;
+		}
+
+		static getPseudoRand(seed) {
+			// http://stackoverflow.com/a/19303725/1766230
+			const x = Math.sin(seed) * MAGIC_NUMBER;
+			return x - Math.floor(x);
+		}
+
+		static getPseudoRandInt(seed, n) {
+			const r = PseudoRandomizer.getPseudoRand(seed);
+			return Math.floor(r * n);
+		}
+
+		makeArray(length = 1) {
+			const arr = [];
+			for (let i = 0; i < length; i += 1) {
+				arr.push(this.random());
+			}
+			return arr;
+		}
+
+		random(n) {
+			this.seed += 1;
+			const r = PseudoRandomizer.getPseudoRand(this.seed);
+			if (typeof n === 'number') return Math.floor(r * n);
+			return r;
+		}
+
+		getSeedString() {
+			return this.seed.toString(RADIX$1);
+		}
+
+		reset() {
+			this.seed = this.initialSeed;
+		}
+	}
+
+	const MAGIC = 999999;
+	const RADIX = 36;
+
+	class Random {
+		constructor(n = 1) {
+			this.n = Math.random() * n;
+		}
+
+		get() {
+			return this.n;
+		}
+
+		static get() {
+			return Math.random();
+		}
+
+		static randomInt(n = 0) {
+			return Math.floor(Math.random() * n);
+		}
+
+		static pickRandom(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		static randomString(n = MAGIC) {
+			return Math.round(Math.random() * n).toString(RADIX);
+		}
+
+		static uniqueString() {
+			return Number(new Date()).toString(RADIX) + Random.randomString();
+		}
+
+		// alias
+		static pick(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		/**
+		 * Chance of random event based on 0-1 odds
+		 * @param {Number} odds - float 0-1 for chance of true
+		 * @returns Boolean
+		 */
+		static chance(odds = 0) {
+			return Math.random() > odds;
+		}
+	}
+
+	const NOOP = () => {};
+
+	class Looper {
+		constructor(a) {
+			this.loopHook = (typeof a === 'function') ? a : NOOP;
+		}
+
+		set(fn) {
+			this.loopHook = fn;
+			return this;
+		}
+
+		next() {
+			this.loopHook();
+			requestAnimationFrame(() => this.next());
+		}
+
+		start() {
+			this.next();
+			return this;
+		}
+	}
+
+	// TODO: Copy functionality from
+	//  https://github.com/rocket-boots/rocket-boots/blob/master/scripts/rocketboots/StateMachine.js
+
+	class StateCommander extends Observer {
+		constructor(options = {}) {
+			super();
+			this.allowUndefinedStates = false;
+			this.currentState = null;
+			this.states = (typeof options.states === 'object' && options.states) ? { ...options.states } : {};
+			this.kbCommander = new KeyboardCommander();
+			this.commandListener = (c) => this.handleCommand(c);
+			this.missingListener = (c) => console.log('>', c, '< (missing)');
+			this.setupKeyboardCommander();
+		}
+
+		removeKeyboardCommander() {
+			this.kbCommander.off('command', this.commandListener);
+			this.kbCommander.off('missingCommand', this.missingListener);
+			this.kbCommander.unmount();
+		}
+
+		setupKeyboardCommander() {
+			this.removeKeyboardCommander();
+			this.kbCommander.mount();
+			this.kbCommander.on('command', this.commandListener);
+			this.kbCommander.on('missingCommand', this.missingListener);
+		}
+
+		warn(...args) { console.warn(...args); } // eslint-disable-line class-methods-use-this
+
+		getState(stateName = this.currentState) {
+			return this.states[stateName];
+		}
+
+		setState(stateArg1, stateArg2) {
+			const name = (typeof stateArg1 === 'object' && stateArg1.name) ? stateArg1.name : stateArg1;
+			if (!name) throw new Error('Name is required for the state');
+			let stateObj = {};
+			if (typeof stateArg2 === 'object') stateObj = stateArg2;
+			else if (typeof stateArg1 === 'object') stateObj = stateArg1;
+			stateObj = { name, ...stateObj };
+			this.states[name] = stateObj;
+		}
+
+		startState(stateName = this.currentState) {
+			const s = this.getState(stateName);
+			if (!s) throw new Error(`No state (${stateName}) found`);
+			this.currentState = stateName;
+			this.kbCommander.setMapping(s.keyboardMapping || s.kbMapping || s.kb || {});
+			if (typeof s.stop === 'function') s.start();
+			this.trigger('startState', stateName);
+		}
+
+		stopState(stateName = this.currentState) {
+			if (stateName === null) return;
+			if (stateName === this.currentState) this.currentState = null;
+			else this.warn(`Stopping a state (${stateName}) that is not the current state.`);
+			const s = this.getState();
+			if (!s) throw new Error(`No state (${stateName}) found`);
+			this.kbCommander.setMapping({});
+			if (typeof s.stop === 'function') s.stop();
+			this.trigger('stopState', stateName);
+		}
+
+		transition(newStateName) {
+			this.stopState(this.currentState);
+			if (!this.states[newStateName]) {
+				if (this.allowUndefinedStates) {
+					this.states[newStateName] = {};
+				} else {
+					throw new Error(`Unknown state ${newStateName}`);
+				}
+			}
+			this.startState(newStateName);
+		}
+
+		handleCommand(command) {
+			this.trigger('command', command);
+		}
+	}
+
+	class GenericGame extends StateCommander {
+		constructor(options = {}) {
+			const {
+				SceneClass, // required
+				ActorClass, // required
+				WorldClass, // required
+				states, // recommended
+				minMouseWheel = -100,
+				maxMouseWheel = 100,
+			} = options;
+			super({ states });
+			this.minMouseWheel = minMouseWheel;
+			this.maxMouseWheel = maxMouseWheel;
+			this.loop = new Looper();
+			this.mouseWheelWatcher = new MouseWheelWatcher({ min: minMouseWheel, max: maxMouseWheel });
+			this.gameScene = new SceneClass();
+			this.world = new WorldClass();
+			this.ActorClass = ActorClass;
+			this.players = [];
+			this.spirits = [];
+			this.actors = [];
+		}
+
+		makePlayer() {
+			const playerId = Random.uniqueString();
+			const spiritId = Random.uniqueString();
+			const player = { playerId }; // TODO: give a uid
+			const spirit = { spiritId, playerId }; // TODO: give a uid and link to player uid
+			return { player, spirit };
+		}
+
+		addNewPlayer() {
+			const { player, spirit } = this.makePlayer();
+			this.players.push(player);
+			this.spirits.push(spirit);
+			return { player, spirit };
+		}
+
+		makeCharacter(spiritId) {
+			const character = new this.ActorClass({
+				spiritId,
+			});
+			character.isCharacter = true;
+			return character;
+		}
+
+		addNewCharacter(...args) {
+			const character = this.makeCharacter(...args);
+			this.actors.push(character);
+			return character;
+		}
+	}
+
 	/* eslint-disable no-bitwise, no-param-reassign */
 	/*
 	 * A speed-improved perlin and simplex noise algorithms for 2D.
@@ -29981,7 +31437,7 @@
 	 * Optimisations by Peter Eastman (peastman@drizzle.stanford.edu).
 	 * Better rank ordering method by Stefan Gustavson in 2012.
 	 * Converted to Javascript by Joseph Gentle.
-	 * Converted to ESM/Module format by Luke Nickerson
+	 * Converted to ESM/Module format by Luke Nickerson.
 	 *
 	 * This code was placed in the public domain by its original author,
 	 * Stefan Gustavson. You may use it as you see fit, but
@@ -30149,10 +31605,12 @@
 
 		// For the 3D case, the simplex shape is a slightly irregular tetrahedron.
 		// Determine which simplex we are in.
-		let i1; let j1; let
-			k1; // Offsets for second corner of simplex in (i,j,k) coords
-		let i2; let j2; let
-			k2; // Offsets for third corner of simplex in (i,j,k) coords
+		let i1;
+		let j1;
+		let k1; // Offsets for second corner of simplex in (i,j,k) coords
+		let i2;
+		let j2;
+		let k2; // Offsets for third corner of simplex in (i,j,k) coords
 		if (x0 >= y0) {
 			if (y0 >= z0) {
 				i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 1; k2 = 0;
@@ -30312,159 +31770,299 @@
 		);
 	};
 
-	class DinoScene {
+	const { X, Y, Z } = ArrayCoords;
+
+	class DinoWorld {
 		constructor() {
-			// Settings
-			this.gridConversion = [1, 1, -1];
-			this.gridSquareSize = 20;
-			this.clearColor = '#344';
-			this.fov = 75;
-			this.eyeLightColor = 0xffffff;
-			this.eyeLightIntensity = 0.9;
-			this.eyeLightDistance = 100;
-			// Instantiated things
-			this.eyeLight = null;
-			this.scene = null;
-			this.renderer = null;
-			this.autoFacingObjects = [];
-			this.camera = null;
-			this.sceneObjects = {}; // keyed by the things' unique id
+			const todaysSeed = PseudoRandomizer.getPseudoRandInt(Number(new Date()), 1000);
+			this.seed = todaysSeed;
+			// Sizes are measured in integer "units"
+			// 20 units = 1m = 100cm
+			// 1 unit = 5cm
+			this.unitsPerMeter = 20;
+			// A chunk with size of 128m is roughly the size of ~10 houses.
+			// A collection of 3x3 chunks would be 384m, larger than a nyc city block (274m)
+			this.chunkSizeMeters = 128;
+			this.chunkSize = this.unitsPerMeter * this.chunkSizeMeters; // 2560 units
+			this.halfChunkSize = this.chunkSize / 2;
+			this.terrainSegmentSize = 10;
+			this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize; // 256
+			this.terrainChunksCache = {};
 		}
 
-		convertGridToRenderingVector3(gridCoords) {
-			const [x = 0, y = 0, z = 0] = gridCoords;
-			const [convX, convY, convZ] = this.gridConversion;
-			return new Vector3(
-				x * this.gridSquareSize * convX,
-				y * this.gridSquareSize * convY,
-				z * this.gridSquareSize * convZ,
-			);
-		}
-
-		makeCamera([x = 0, y = 0, z = 0] = []) {
-			const aspect = window.innerWidth / window.innerHeight;
-			const camera = new PerspectiveCamera(this.fov, aspect, 0.1, 1000);
-			camera.position.x = x;
-			camera.position.y = y;
-			camera.position.z = z;
-			return camera;
-		}
-
-		makeLight() {
-			// const color = 0xFFFFFF;
-			// const intensity = .005;
-			// const light = new THREE.DirectionalLight(color, intensity);
-			// light.position.set(-1, 2, 4);
-			// grid.scene.add(light);
-			const { eyeLightColor, eyeLightIntensity, eyeLightDistance } = this;
-			this.eyeLight = new PointLight(eyeLightColor, eyeLightIntensity, eyeLightDistance);
-			this.scene.add(this.eyeLight);
-
-			// const pointLight = new THREE.PointLight(0xffffff, 0.15, 1000);
-			// pointLight.position.set(-100, -100, -100);
-			// this.scene.add(pointLight);
-
-			const ambientLight = new AmbientLight(0x404040, 0.25);
-			this.scene.add(ambientLight);
-
-			// const sphereSize = 1;
-			// const pointLightHelper = new THREE.PointLightHelper(pointLight, sphereSize);
-			// this.scene.add(pointLightHelper);
-		}
-
-		setupRenderer() {
-			this.renderer = new Renderer();
-			this.renderer.setClearColor(this.clearColor);
-		}
-
-		setup(cameraCoords) {
-			if (!this.renderer) this.setupRenderer();
-			this.scene = new Scene();
-			this.camera = this.makeCamera(cameraCoords);
-			this.camera.lookAt(new Vector3(0, 0, 0));
-			this.makeLight();
-			this.sceneObjects = {};
-		}
-
-		render() {
-			this.autoFacingObjects.forEach((obj) => {
-				obj.quaternion.copy(this.camera.quaternion);
-			});
-			this.renderer.render(this.scene, this.camera);
-		}
-
-		static loadTexture(src) {
-			const loader = new TextureLoader().setPath('images/');
-			return new Promise((resolve, reject) => {
-				loader.load(src, resolve, null, reject);
+		validateNumbers(objOfValues, ...args) {
+			Object.keys(objOfValues).forEach((key) => {
+				const n = objOfValues[key];
+				if (typeof n !== 'number' || Number.isNaN(n)) {
+					console.error(args);
+					throw new Error(`${key} is not a number`);
+				}
 			});
 		}
 
-		addBox() {
-			const box = new BoxGeometry(10, 10, 10);
-			const material = new MeshBasicMaterial({ color: 0xff0000 });
-			const boxMesh = new Mesh(box, material);
-			this.scene.add(boxMesh);
+		calcTerrainHeight(x, y) {
+			const noiseScale = 0.02;
+			const minHeight = -100;
+			const maxHeight = 500;
+			const delta = maxHeight - minHeight;
+			const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
+			// TODO: FIXME -- noiseValue is coming back as 0
+			const h = minHeight + (delta * noiseValue);
+			// console.log(noiseValue);
+			const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+			// console.log(h, h2, '...', noiseValue);
+			this.validateNumbers({ h, h2 });
+			return h;
 		}
 
-		static makeTerrain(heightMap) {
-			const geometry = new PlaneGeometry(1000, 1000, 256, 256);
-			// heightMap.wrapS = THREE.RepeatWrapping;
-			// heightMap.wrapT = THREE.RepeatWrapping;
-
-			// set the height of each vertex based on the color of the corresponding pixel in the heightmap
-			// const vertices = geometry.attributes.position.array;
-			// const imageData = heightMap.image.data;
-			// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 4) {
-			// 	vertices[i] = (imageData[j] + imageData[j + 1] + imageData[j + 2]) / 3;
-			// }
-
-			// const noiseScale = 0.1;
-			// const vertices = geometry.attributes.position.array;
-			// for (let i = 0, j = 0, l = vertices.length; i < l; i += 3, j += 1) {
-			// 	const x = vertices[i];
-			// 	const z = vertices[i + 2];
-			// 	const y = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * z, 0)));
-			// 	vertices[i + 1] = y;
-			// }
-
-			const material = new MeshStandardMaterial({
-				color: 0xffffff,
-				wireframe: true,
-				side: DoubleSide,
-				// displacementMap: heightMap,
-				// displacementScale: 20,
-			});
-
-			// create the mesh for the terrain
-			const terrain = new Mesh(geometry, material);
-
-			// rotate the terrain to make it look like hills and valleys
-			terrain.rotation.x = -Math.PI / 2;
-			terrain.position.y = -10;
-			return terrain;
+		getTerrainHeight(x, y) {
+			return this.calcTerrainHeight(x, y);
 		}
 
-		async addTerrain(heightMapImageSrc) {
-			const heightMap = await DinoScene.loadTexture(heightMapImageSrc);
-			const terrain = DinoScene.makeTerrain(heightMap);
-			window.terrain = terrain;
-			// add the terrain to the scene
-			this.scene.add(terrain);
+		getChunkCoord(n) {
+			this.validateNumbers({ n }, 'getChunkCoord');
+			const round = (n < 0) ? Math.ceil : Math.floor;
+			return round(n / this.chunkSize);
+		}
+
+		/** Get chunk-level x,y,z coordinates from world x,y,z coordinates */
+		getChunkCoords(coords) {
+			const x = this.getChunkCoord(coords[X]);
+			const y = 0; // right now we don't do chunking up/down
+			const z = this.getChunkCoord(coords[Z]);
+			return [x, y, z];
+		}
+
+		getChunkTopLeftCoords(chunkCoords) {
+			const center = this.getChunkCenterCoords(chunkCoords);
+			return [center[X] - this.halfChunkSize, 0, center[Z] - this.halfChunkSize];
+		}
+
+		getChunkCenterCoords(chunkCoords) {
+			if (!chunkCoords) throw new Error();
+			const centerX = chunkCoords[X] * this.chunkSize;
+			const centerZ = chunkCoords[Z] * this.chunkSize;
+			return [centerX, 0, centerZ];
+		}
+
+		getChunkId(chunkCoords) {
+			if (!chunkCoords) throw new Error();
+			return `terrain-chunk-${chunkCoords.join(',')}`;
+		}
+
+		makeTerrainChunk(chunkCoords) {
+			if (!chunkCoords) throw new Error('makeTerrainChunk missing chunkCoords');
+			const heights = [];
+			const topLeft = this.getChunkTopLeftCoords(chunkCoords);
+			const center = this.getChunkCenterCoords(chunkCoords);
+			const chunkId = this.getChunkId(chunkCoords);
+			let x;
+			let y;
+			const size = this.terrainSegmentsPerChunk + 2;
+			for (y = 0; y <= size; y += 1) {
+				if (!heights[y]) heights[y] = [];
+				for (x = 0; x <= size; x += 1) {
+					// const h = Math.round(Math.sin(x) * 100 + Math.sin(y) * 50);
+					const worldX = topLeft[X] + x;
+					const worldY = topLeft[Z] + y;
+					// Note: there's a z --> y conversion happening here
+					this.validateNumbers({ worldX, worldY });
+					heights[y][x] = this.calcTerrainHeight(worldX, worldY);
+				}
+			}
+			return {
+				heights,
+				entityId: chunkId,
+				center,
+				size: this.chunkSize,
+				segments: this.terrainSegmentsPerChunk,
+			};
+		}
+
+		addNewTerrainChunk(chunkCoords) {
+			const chunkId = this.getChunkId(chunkCoords);
+			// Get it from cache if its already been created
+			if (this.terrainChunksCache[chunkId]) return this.terrainChunksCache[chunkId];
+			// Otherwise create it
+			const chunk = this.makeTerrainChunk(chunkCoords);
+			// ...and cache it
+			this.terrainChunksCache[chunk.entityId] = chunk;
+			return chunk;
+		}
+
+		makeTerrainChunks(coords) {
+			if (!coords) throw new Error('Missing coords param');
+			const chunkCoords = this.getChunkCoords(coords);
+			const centerChunk = this.addNewTerrainChunk(chunkCoords);
+			return [
+				centerChunk,
+			];
 		}
 	}
 
-	class DinoGame {
+	class Entity {
 		constructor() {
-			this.dinoScene = new DinoScene();
+			this.entityId = Random.uniqueString();
+			this.isEntity = true;
+			this.coords = [0, 0, 0];
+			this.facing = 0; // radians
+			this.tags = [];
+			this.renderAs = 'box';
+			this.color = 0xffffff;
 		}
 
-		start() {
-			const { dinoScene } = this;
-			dinoScene.setup([0, 0, 100]);
-			dinoScene.addBox();
-			dinoScene.addTerrain('BritanniaHeightMap2.jpg');
-			dinoScene.render();
+		getCoords() {
+			return [...this.coords];
+		}
+
+		setX(x) { this.coords[ArrayCoords.X] = x; }
+
+		setY(y) { this.coords[ArrayCoords.Y] = y; }
+
+		setZ(z) { this.coords[ArrayCoords.Z] = z; }
+
+		moveTo(coords) {
+			const [x, y, z] = coords;
+			if (typeof x === 'number') this.coords[0] = x;
+			if (typeof y === 'number') this.coords[1] = y;
+			if (typeof z === 'number') this.coords[2] = z;
+		}
+
+		move(relativeCoords = []) {
+			this.moveTo(ArrayCoords.add(this.coords, relativeCoords));
+		}
+
+		turn(relativeRadians = 0) {
+			this.facing += relativeRadians;
+		}
+
+		getTags() {
+			return this.tags;
+		}
+
+		hasTag(tag) {
+			const blobTags = this.getTags();
+			return blobTags.includes(tag);
+		}
+
+		hasOneOfTags(tags = []) {
+			const blobTags = this.getTags();
+			const matchingTags = blobTags.filter((tag) => tags.includes(tag));
+			return (matchingTags.length > 0);
+		}
+	}
+
+	class Actor extends Entity {
+		constructor(options = {}) {
+			super(options);
+			this.spiritId = options.spiritId;
+			this.isActor = true;
+		}
+	}
+
+	// import * as THREE from 'three';
+
+	const { PI } = Math;
+	const TAU = PI * 2;
+	const HALF_PI = PI / 2;
+
+	const states = {
+		home: {
+			keyboardMapping: {
+				Enter: 'start',
+			},
+		},
+		intro: {
+
+		},
+		explore: {
+			keyboardMapping: {
+				w: 'move forward',
+				s: 'move back',
+				a: 'move left',
+				d: 'move right',
+				q: 'turn left',
+				e: 'turn right',
+			}
+		},
+		inventory: {},
+		dead: {},
+	};
+
+	class DinoGame extends GenericGame {
+		constructor(options) {
+			super({
+				states,
+				minMouseWheel: 0,
+				maxMouseWheel: 500,
+				SceneClass: DinoScene,
+				ActorClass: Actor,
+				WorldClass: DinoWorld,
+			});
+			this.pointerLocker = new PointerLocker();
+		}
+
+		handleCommand(command) {
+			const { mainCharacter } = this;
+			const commandWords = command.split(' ');
+			const firstCommand = commandWords[0];
+			if (firstCommand === 'move') {
+				let spd = 3;
+				let angleOfMovement = mainCharacter.facing; // forward
+				if (commandWords[1] === 'forward') ;
+				else if (commandWords[1] === 'back') angleOfMovement += PI;
+				else if (commandWords[1] === 'left') angleOfMovement += HALF_PI;
+				else if (commandWords[1] === 'right') angleOfMovement -= HALF_PI;
+				const x = spd * Math.sin(angleOfMovement);
+				const z = spd * Math.cos(angleOfMovement);
+				mainCharacter.move([x, 0, z]);
+				// this.cameraCoords.position
+			} else if (firstCommand === 'turn') {
+				let turnAmount = TAU / 50;
+				if (commandWords[1] === 'right') turnAmount *= -1;
+				mainCharacter.turn(turnAmount);
+			}
+		}
+
+		applyPhysics(actor, world) {
+			const h = world.getTerrainHeight(actor.coords[0], actor.coords[2]);
+			actor.setY(h);
+		}
+
+		animationTick() {
+			const { mainCharacter, actors } = this;
+			const zoom = this.mouseWheelWatcher.percent * 100;
+			this.mouseWheelWatcher.update();
+			const [x, y, z] = mainCharacter.coords;
+			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
+			actors.forEach((actor) => this.applyPhysics(actor, this.world));
+			this.gameScene.update({
+				terrainChunks,
+				cameraPosition: [-(zoom ** 1.5), 30 + (zoom ** 2), -zoom / 2],
+				cameraRotation: mainCharacter.facing,
+				worldCoords: [-x, -y, -z],
+				entities: [...actors],
+			}).render();
+		}
+
+		async start() {
+			const { spirit } = this.addNewPlayer();
+			this.mainCharacter = this.addNewCharacter(spirit);
+			this.mainCharacter.coords = [100, 0, 100];
+			// this.transition('home');
+			// this.transition('intro');
+			this.transition('explore');
+			const { gameScene } = this;
+			gameScene.setup([0, 100, 100]);
+			this.pointerLocker
+				.setup() // Needs to happen after the canvas is created
+				.on('lockedMouseMove', ({ x, y }) => {
+					this.mainCharacter.facing += x * -0.001;
+				});
+			// gameScene.addBox();
+			// gameScene.addBox();
+			// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
+			this.loop.set(() => this.animationTick()).start();
 		}
 	}
 
