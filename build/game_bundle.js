@@ -30852,7 +30852,9 @@
 			if (terrainChunks) {
 				terrainChunks.forEach((chunk) => {
 					const sceneObj = this.entitySceneObjects[chunk.entityId];
-					if (sceneObj) ; else {
+					if (sceneObj) {
+						this.applyTextureImageToObject(sceneObj, chunk.textureImage);
+					} else {
 						this.addNewTerrainChunkPlane(chunk);
 					}
 				});
@@ -30892,12 +30894,18 @@
 			this.worldGroup.add(terrain); // add the terrain to the scene
 		}
 
+		applyTextureImageToObject(obj, textureImage) {
+			if (!textureImage.complete) {
+				console.warn('Cannot apply texture because image is not complete yet');
+			}
+			return; // FIXME: short-cutting this because it's not working
+		}
+
 		applyHeightsToGeometry(geometry, heights, dataSize) {
 			const { position } = geometry.attributes;
-			const vertices = position.array;
+			position.array;
 			const heightMultiplier = 1;
-			// I think the problem has to do with size of the geometry not matching the data
-			console.log(vertices.length, position.count, 'dataSize', dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
+			// console.log(vertices.length, position.count, 'dataSize', dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
 			const heightsSize = heights.length;
 			// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 3) {
 			for (let i = 0; i < position.count; i += 1) {
@@ -30914,12 +30922,12 @@
 				}
 				const h = heights[y][x] * heightMultiplier;
 				// console.log(x, y, h);
-				// position.setZ(i, h);
-				{
-					const x = position.getX(i);
-					const y = position.getY(i);
-					position.setXYZ(i, x, y, h);
-				}
+				position.setZ(i, h);
+				// {
+				// 	const x = position.getX(i);
+				// 	const y = position.getY(i);
+				// 	position.setXYZ(i, x, y, h);
+				// }
 				// vertices[j + 1] = h;
 			}
 			position.needsUpdate = true;
@@ -30934,9 +30942,9 @@
 
 			// Option 1 -- a heightmap -- but it appears to be blank
 
-			const heightMap = new Texture(terrainChunk.image, {}, ClampToEdgeWrapping, ClampToEdgeWrapping, NearestFilter, NearestFilter, RGBAFormat, UnsignedByteType, 0);
-			heightMap.needsUpdate = true;
-			console.log(terrainChunk.image.complete);
+			// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+			// heightMap.needsUpdate = true;
+			// console.log(terrainChunk.image.complete);
 
 			// other attempts:
 			// const heightMap = new THREE.Texture(terrainChunk.image);
@@ -30960,8 +30968,8 @@
 				// wireframe: true,
 				side: DoubleSide,
 				// Option 1
-				displacementMap: heightMap,
-				displacementScale: 500,
+				// displacementMap: heightMap,
+				// displacementScale: 500,
 				flatShading: true,
 			});
 
@@ -31905,6 +31913,7 @@
 			document.getElementById('map').innerHTML = '';
 			document.getElementById('map').appendChild(image);
 			return {
+				textureImage: image,
 				image,
 				heights,
 				entityId: chunkId,

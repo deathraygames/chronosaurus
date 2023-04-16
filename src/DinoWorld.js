@@ -147,6 +147,7 @@ class DinoWorld {
 		document.getElementById('map').innerHTML = '';
 		document.getElementById('map').appendChild(image);
 		return {
+			textureImage: image,
 			image,
 			heights,
 			entityId: chunkId,
