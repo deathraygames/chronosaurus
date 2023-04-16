@@ -30824,15 +30824,36 @@
 			return this;
 		}
 
-		update(options = {}) {
-			const { cameraPosition, cameraRotation, worldCoords, entities, terrainChunks } = options;
-			if (cameraPosition) {
-				this.camera.position.copy(DinoScene.convertCoordsToVector3(cameraPosition));
-				this.camera.lookAt(new Vector3());
+		updateToGoals(t) {
+			// To lerp:
+			// obj.position.lerp(goalPos, q);
+			// To do it instantly:
+			// obj.position.copy(goalPos);
+
+			// this.camera.rotation.setFromVector3(this.worldRotationGoal);
+		}
+
+		updateCamera(positionGoal, rotationGoal, focusGoal = new Vector3()) {
+			if (positionGoal) {
+				this.camera.position.copy(DinoScene.convertCoordsToVector3(positionGoal));
 			}
-			if (cameraRotation) {
-				// this.camera.rotation.copy(DinoScene.convertCoordsToVector3(cameraPosition));
-				this.camera.lookAt(new Vector3());
+			this.camera.rotation.setFromVector3(rotationGoal, 'ZXY');
+			// this.camera.lookAt(focusGoal);
+		}
+
+		update(options = {}, t = 5) { // time `t` is in milliseconds
+			// console.log(t);
+			const {
+				cameraPosition, cameraRotationGoalArray, worldCoords, entities, terrainChunks,
+			} = options;
+			if (cameraPosition || cameraRotationGoalArray) {
+				const [x = 0, y = 0, z = 0] = cameraRotationGoalArray;
+				this.updateCamera(
+					DinoScene.convertCoordsToVector3(cameraPosition),
+					(new Vector3(x, y, z)),
+				);
+				// this.camera.position.copy(DinoScene.convertCoordsToVector3(cameraPosition));
+				// this.camera.lookAt(new Vector3());
 			}
 			if (worldCoords) {
 				this.worldGroup.position.copy(DinoScene.convertCoordsToVector3(worldCoords));
@@ -30859,6 +30880,7 @@
 					}
 				});
 			}
+			this.updateToGoals(t);
 			return this;
 		}
 
@@ -31273,6 +31295,7 @@
 	class Looper {
 		constructor(a) {
 			this.loopHook = (typeof a === 'function') ? a : NOOP;
+			this.lastTime = performance.now();
 		}
 
 		set(fn) {
@@ -31281,11 +31304,15 @@
 		}
 
 		next() {
-			this.loopHook();
+			const now = performance.now();
+			const t = now - this.lastTime;
+			this.lastTime = now;
+			this.loopHook(t);
 			requestAnimationFrame(() => this.next());
 		}
 
 		start() {
+			this.lastTime = performance.now();
 			this.next();
 			return this;
 		}
@@ -32047,6 +32074,7 @@
 			});
 			this.pointerLocker = new PointerLocker();
 			this.cameraPosition = [0, 0, 0];
+			this.cameraVerticalRotation = HALF_PI;
 		}
 
 		handleCommand(command) {
@@ -32076,12 +32104,12 @@
 			actor.setZ(h);
 		}
 
-		animationTick() {
+		animationTick(t) {
 			const { mainCharacter, actors } = this;
 			const zoom = this.mouseWheelWatcher.percent * 100;
 			this.mouseWheelWatcher.update();
 			this.cameraPosition[Z] = 50 + (zoom ** 2);
-			this.cameraPosition[Y] = -100 - zoom;
+			// this.cameraPosition[Y] = -100 - zoom;
 			const [x, y, z] = mainCharacter.coords;
 			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
 			actors.forEach((actor) => this.applyPhysics(actor, this.world));
@@ -32089,10 +32117,10 @@
 				terrainChunks,
 				// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
 				cameraPosition: this.cameraPosition,
-				cameraRotation: mainCharacter.facing,
+				cameraRotationGoalArray: [this.cameraVerticalRotation, 0, -mainCharacter.facing],
 				worldCoords: [-x, -y, -z],
 				entities: [...actors],
-			}).render();
+			}, t).render();
 		}
 
 		async start() {
@@ -32109,12 +32137,13 @@
 				.on('lockedMouseMove', ({ x, y }) => {
 					this.mainCharacter.facing += x * 0.001;
 					// this.cameraPosition[X] += x * 1;
-					this.cameraPosition[Y] += y * 1;
+					// this.cameraPosition[Y] += y * 1;
+					this.cameraVerticalRotation += y * -0.001;
 				});
 			// gameScene.addBox();
 			// gameScene.addBox();
 			// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
-			this.loop.set(() => this.animationTick()).start();
+			this.loop.set((t) => this.animationTick(t)).start();
 		}
 	}
 

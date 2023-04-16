@@ -101,15 +101,37 @@ class DinoScene {
 		return this;
 	}
 
-	update(options = {}) {
-		const { cameraPosition, cameraRotation, worldCoords, entities, terrainChunks } = options;
-		if (cameraPosition) {
-			this.camera.position.copy(DinoScene.convertCoordsToVector3(cameraPosition));
-			this.camera.lookAt(new Vector3());
+	updateToGoals(t) {
+		const q = 1.0 - (0.24 ** t); // This q & lerp logic is from simondev
+		// To lerp:
+		// obj.position.lerp(goalPos, q);
+		// To do it instantly:
+		// obj.position.copy(goalPos);
+
+		// this.camera.rotation.setFromVector3(this.worldRotationGoal);
+	}
+
+	updateCamera(positionGoal, rotationGoal, focusGoal = new Vector3()) {
+		if (positionGoal) {
+			this.camera.position.copy(DinoScene.convertCoordsToVector3(positionGoal));
 		}
-		if (cameraRotation) {
-			// this.camera.rotation.copy(DinoScene.convertCoordsToVector3(cameraPosition));
-			this.camera.lookAt(new Vector3());
+		this.camera.rotation.setFromVector3(rotationGoal, 'ZXY');
+		// this.camera.lookAt(focusGoal);
+	}
+
+	update(options = {}, t = 5) { // time `t` is in milliseconds
+		// console.log(t);
+		const {
+			cameraPosition, cameraRotationGoalArray, worldCoords, entities, terrainChunks,
+		} = options;
+		if (cameraPosition || cameraRotationGoalArray) {
+			const [x = 0, y = 0, z = 0] = cameraRotationGoalArray;
+			this.updateCamera(
+				DinoScene.convertCoordsToVector3(cameraPosition),
+				(new Vector3(x, y, z)),
+			);
+			// this.camera.position.copy(DinoScene.convertCoordsToVector3(cameraPosition));
+			// this.camera.lookAt(new Vector3());
 		}
 		if (worldCoords) {
 			this.worldGroup.position.copy(DinoScene.convertCoordsToVector3(worldCoords));
@@ -136,6 +158,7 @@ class DinoScene {
 				}
 			});
 		}
+		this.updateToGoals(t);
 		return this;
 	}
 

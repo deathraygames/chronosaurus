@@ -46,6 +46,7 @@ class DinoGame extends GenericGame {
 		});
 		this.pointerLocker = new PointerLocker();
 		this.cameraPosition = [0, 0, 0];
+		this.cameraVerticalRotation = HALF_PI;
 	}
 
 	handleCommand(command) {
@@ -75,12 +76,12 @@ class DinoGame extends GenericGame {
 		actor.setZ(h);
 	}
 
-	animationTick() {
+	animationTick(t) {
 		const { mainCharacter, actors } = this;
 		const zoom = this.mouseWheelWatcher.percent * 100;
 		this.mouseWheelWatcher.update();
 		this.cameraPosition[Z] = 50 + (zoom ** 2);
-		this.cameraPosition[Y] = -100 - zoom;
+		// this.cameraPosition[Y] = -100 - zoom;
 		const [x, y, z] = mainCharacter.coords;
 		const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
 		actors.forEach((actor) => this.applyPhysics(actor, this.world));
@@ -88,10 +89,10 @@ class DinoGame extends GenericGame {
 			terrainChunks,
 			// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
 			cameraPosition: this.cameraPosition,
-			cameraRotation: mainCharacter.facing,
+			cameraRotationGoalArray: [this.cameraVerticalRotation, 0, -mainCharacter.facing],
 			worldCoords: [-x, -y, -z],
 			entities: [...actors],
-		}).render();
+		}, t).render();
 	}
 
 	async start() {
@@ -108,12 +109,13 @@ class DinoGame extends GenericGame {
 			.on('lockedMouseMove', ({ x, y }) => {
 				this.mainCharacter.facing += x * 0.001;
 				// this.cameraPosition[X] += x * 1;
-				this.cameraPosition[Y] += y * 1;
+				// this.cameraPosition[Y] += y * 1;
+				this.cameraVerticalRotation += y * -0.001;
 			});
 		// gameScene.addBox();
 		// gameScene.addBox();
 		// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
-		this.loop.set(() => this.animationTick()).start();
+		this.loop.set((t) => this.animationTick(t)).start();
 	}
 }
 
