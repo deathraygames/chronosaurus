@@ -57,8 +57,8 @@ class DinoWorld {
 
 	getChunkCoord(n) {
 		this.validateNumbers({ n }, 'getChunkCoord');
-		const round = (n < 0) ? Math.ceil : Math.floor;
-		return round(n / this.chunkSize);
+		// const round = (n < 0) ? Math.ceil : Math.floor;
+		return Math.round(n / this.chunkSize);
 	}
 
 	/** Get chunk-level x,y,z coordinates from world x,y,z coordinates */
@@ -147,6 +147,7 @@ class DinoWorld {
 		document.getElementById('map').innerHTML = '';
 		document.getElementById('map').appendChild(image);
 		return {
+			color: (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
 			textureImage: image,
 			image,
 			heights,
@@ -171,11 +172,18 @@ class DinoWorld {
 
 	makeTerrainChunks(coords) {
 		if (!coords) throw new Error('Missing coords param');
-		const chunkCoords = this.getChunkCoords(coords);
-		const centerChunk = this.addNewTerrainChunk(chunkCoords);
-		return [
-			centerChunk,
-		];
+		const centerChunkCoords = this.getChunkCoords(coords);
+		// const centerChunk = this.addNewTerrainChunk(centerChunkCoords);
+		// return [centerChunk];
+		const chunks = [];
+		for (let x = -1; x <= 1; x += 1) {
+			for (let y = -1; y <= 1; y += 1) {
+				const newChunkCoords = ArrayCoords.add(centerChunkCoords, [x, y, 0]);
+				const chunk = this.addNewTerrainChunk(newChunkCoords);
+				chunks.push(chunk);
+			}
+		}
+		return chunks;
 	}
 }
 

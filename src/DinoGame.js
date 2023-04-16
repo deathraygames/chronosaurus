@@ -92,6 +92,7 @@ class DinoGame extends GenericGame {
 			cameraRotationGoalArray: [this.cameraVerticalRotation, 0, -mainCharacter.facing],
 			worldCoords: [-x, -y, -z],
 			entities: [...actors],
+			clearColor: [.5, .75, 1],
 		}, t).render();
 	}
 

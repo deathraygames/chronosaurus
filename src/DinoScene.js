@@ -27,6 +27,26 @@ class DinoScene {
 		this.chunkTerrains = [];
 	}
 
+	registerSceneObj(entityId, obj) {
+		this.entitySceneObjects[entityId] = obj;
+	}
+
+	deregisterSceneObj(entityId) {
+		delete this.entitySceneObjects[entityId];
+	}
+
+	findRegisteredSceneObj(entityId) {
+		return this.entitySceneObjects[entityId];
+	}
+
+	findRegisteredSceneObjEntityId(uuid) {
+		const foundEntityId = Object.keys(this.entitySceneObjects).find((entityId) => {
+			const obj = this.entitySceneObjects[entityId];
+			return (obj.uuid === uuid);
+		});
+		return foundEntityId;
+	}
+
 	// convertGridToRenderingVector3(gridCoords) {
 	// 	const [x = 0, y = 0, z = 0] = gridCoords;
 	// 	const [convX, convY, convZ] = this.gridConversion;
@@ -91,6 +111,8 @@ class DinoScene {
 		if (!this.renderer) this.setupRenderer();
 		this.scene = new Scene();
 		this.worldGroup = new Group();
+		this.terrainGroup = new Group();
+		this.worldGroup.add(this.terrainGroup);
 		this.scene.add(this.worldGroup);
 		this.camera = this.makeCamera(cameraCoords);
 		this.camera.lookAt(new Vector3(0, 0, 0));
@@ -119,11 +141,25 @@ class DinoScene {
 		// this.camera.lookAt(focusGoal);
 	}
 
+	removeObject(obj) {
+		const { uuid } = obj;
+		const entityId = this.findRegisteredSceneObjEntityId(uuid);
+		this.deregisterSceneObj(entityId);
+		obj.removeFromParent();
+		console.log('removing object', entityId, uuid);
+	}
+
 	update(options = {}, t = 5) { // time `t` is in milliseconds
 		// console.log(t);
 		const {
 			cameraPosition, cameraRotationGoalArray, worldCoords, entities, terrainChunks,
+			clearColor,
 		} = options;
+		if (clearColor && clearColor !== this.clearColor) {
+			this.clearColor = (clearColor instanceof Array)
+				? new THREE.Color(...clearColor) : new THREE.Color(clearColor);
+			this.renderer.setClearColor(this.clearColor);
+		}
 		if (cameraPosition || cameraRotationGoalArray) {
 			const [x = 0, y = 0, z = 0] = cameraRotationGoalArray;
 			this.updateCamera(
@@ -149,12 +185,22 @@ class DinoScene {
 			});
 		}
 		if (terrainChunks) {
+			const visibleTerrainUuids = [];
 			terrainChunks.forEach((chunk) => {
-				const sceneObj = this.entitySceneObjects[chunk.entityId];
+				let sceneObj = this.entitySceneObjects[chunk.entityId];
 				if (sceneObj) {
 					this.applyTextureImageToObject(sceneObj, chunk.textureImage);
 				} else {
-					this.addNewTerrainChunkPlane(chunk);
+					console.log('Adding terrain for chunk', chunk);
+					sceneObj = this.addNewTerrainChunkPlane(chunk);
+				}
+				visibleTerrainUuids.push(sceneObj.uuid);
+			});
+			// Loop over terrain objects (children of terrainGroup)
+			// and remove any not visible
+			this.terrainGroup.children.forEach((terrainChild) => {
+				if (!visibleTerrainUuids.includes(terrainChild.uuid)) {
+					this.removeObject(terrainChild);
 				}
 			});
 		}
@@ -186,13 +232,13 @@ class DinoScene {
 		return boxMesh;
 	}
 
-	async addNewTerrainByHeightMap(heightMapImageSrc) {
-		const heightMap = await DinoScene.loadTexture(heightMapImageSrc);
-		const terrain = this.makeTerrain(heightMap);
-		window.terrain = terrain;
-		this.chunkTerrains.push(terrain);
-		this.worldGroup.add(terrain); // add the terrain to the scene
-	}
+	// async addNewTerrainByHeightMap(heightMapImageSrc) {
+	// 	const heightMap = await DinoScene.loadTexture(heightMapImageSrc);
+	// 	const terrain = this.makeTerrain(heightMap);
+	// 	window.terrain = terrain;
+	// 	this.chunkTerrains.push(terrain);
+	// 	this.worldGroup.add(terrain); // add the terrain to the scene
+	// }
 
 	applyTextureImageToObject(obj, textureImage) {
 		if (!textureImage.complete) {
@@ -242,7 +288,9 @@ class DinoScene {
 
 	makeTerrainChunkPlane(terrainChunk = {}) {
 		// const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
-		const { heights, segments, size, vertexDataSize } = terrainChunk;
+		const { heights, segments, size, vertexDataSize, center,
+			color = 0x55ffbb,
+		} = terrainChunk;
 		// const segments = 8;
 		console.log(segments);
 		const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
@@ -268,8 +316,8 @@ class DinoScene {
 		// heightMap.wrapT = THREE.RepeatWrapping;
 
 		const material = new THREE.MeshStandardMaterial({
-			opacity: 0.9,
-			color: 0x55ffbb,
+			// opacity: 0.9,
+			color,
 			// map: texture,
 			// vertexColors: true,
 			// wireframe: true,
@@ -283,9 +331,12 @@ class DinoScene {
 		// create the mesh for the terrain
 		const terrain = new THREE.Mesh(geometry, material);
 
-		terrain.position.x = 0;
-		terrain.position.y = 0;
-		terrain.position.z = 0;
+		{
+			const [x = 0, y = 0, z = 0] = center;
+			terrain.position.x = x;
+			terrain.position.y = y;
+			terrain.position.z = z;
+		}
 
 		// rotate the terrain to make it look like hills and valleys
 		// terrain.rotation.x = -Math.PI / 2;
@@ -295,8 +346,9 @@ class DinoScene {
 	addNewTerrainChunkPlane(terrainChunk) {
 		const terrain = this.makeTerrainChunkPlane(terrainChunk);
 		this.chunkTerrains.push(terrain);
-		this.worldGroup.add(terrain); // add the terrain to the scene
+		this.terrainGroup.add(terrain); // add the terrain to the scene
 		this.entitySceneObjects[terrainChunk.entityId] = terrain;
+		return terrain;
 	}
 
 	addNewWorldEntity(entity) {

@@ -16,16 +16,16 @@ class PointerLocker extends Observer {
 			// console.log({ x, y });
 		};
 		this.handleLock = async (event) => {
-			console.log('handleLock', event);
+			// console.log('handleLock', event);
 			if (this.clickTypes.includes(event.type)) {
 				if (event.which !== this.lockButton) return;
 			}
-			console.log('Preventing default, then locking');
+			// console.log('Preventing default, then locking');
 			event.preventDefault();
 			await this.lock();
 		};
 		this.handleLockUnlock = async (event) => {
-			console.log('handleLockUnlock - isLocked?', this.isLocked());
+			// console.log('handleLockUnlock - isLocked?', this.isLocked());
 			if (this.isLocked()) {
 				await this.handleUnlock(event);
 				return;
@@ -33,11 +33,11 @@ class PointerLocker extends Observer {
 			await this.handleLock(event);
 		};
 		this.handleUnlock = async (event) => {
-			console.log('handleUnlock', event);
+			// console.log('handleUnlock', event);
 			if (this.clickTypes.includes(event.type)) {
 				if (event.which !== this.unlockButton) return;
 			}
-			console.log('Preventing default, then locking');
+			// console.log('Preventing default, then locking');
 			event.preventDefault();
 			await this.unlock();
 		};

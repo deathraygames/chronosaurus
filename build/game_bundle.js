@@ -161,16 +161,16 @@
 				// console.log({ x, y });
 			};
 			this.handleLock = async (event) => {
-				console.log('handleLock', event);
+				// console.log('handleLock', event);
 				if (this.clickTypes.includes(event.type)) {
 					if (event.which !== this.lockButton) return;
 				}
-				console.log('Preventing default, then locking');
+				// console.log('Preventing default, then locking');
 				event.preventDefault();
 				await this.lock();
 			};
 			this.handleLockUnlock = async (event) => {
-				console.log('handleLockUnlock - isLocked?', this.isLocked());
+				// console.log('handleLockUnlock - isLocked?', this.isLocked());
 				if (this.isLocked()) {
 					await this.handleUnlock(event);
 					return;
@@ -178,11 +178,11 @@
 				await this.handleLock(event);
 			};
 			this.handleUnlock = async (event) => {
-				console.log('handleUnlock', event);
+				// console.log('handleUnlock', event);
 				if (this.clickTypes.includes(event.type)) {
 					if (event.which !== this.unlockButton) return;
 				}
-				console.log('Preventing default, then locking');
+				// console.log('Preventing default, then locking');
 				event.preventDefault();
 				await this.unlock();
 			};
@@ -30750,6 +30750,26 @@
 			this.chunkTerrains = [];
 		}
 
+		registerSceneObj(entityId, obj) {
+			this.entitySceneObjects[entityId] = obj;
+		}
+
+		deregisterSceneObj(entityId) {
+			delete this.entitySceneObjects[entityId];
+		}
+
+		findRegisteredSceneObj(entityId) {
+			return this.entitySceneObjects[entityId];
+		}
+
+		findRegisteredSceneObjEntityId(uuid) {
+			const foundEntityId = Object.keys(this.entitySceneObjects).find((entityId) => {
+				const obj = this.entitySceneObjects[entityId];
+				return (obj.uuid === uuid);
+			});
+			return foundEntityId;
+		}
+
 		// convertGridToRenderingVector3(gridCoords) {
 		// 	const [x = 0, y = 0, z = 0] = gridCoords;
 		// 	const [convX, convY, convZ] = this.gridConversion;
@@ -30814,6 +30834,8 @@
 			if (!this.renderer) this.setupRenderer();
 			this.scene = new Scene();
 			this.worldGroup = new Group();
+			this.terrainGroup = new Group();
+			this.worldGroup.add(this.terrainGroup);
 			this.scene.add(this.worldGroup);
 			this.camera = this.makeCamera(cameraCoords);
 			this.camera.lookAt(new Vector3(0, 0, 0));
@@ -30841,11 +30863,25 @@
 			// this.camera.lookAt(focusGoal);
 		}
 
+		removeObject(obj) {
+			const { uuid } = obj;
+			const entityId = this.findRegisteredSceneObjEntityId(uuid);
+			this.deregisterSceneObj(entityId);
+			obj.removeFromParent();
+			console.log('removing object', entityId, uuid);
+		}
+
 		update(options = {}, t = 5) { // time `t` is in milliseconds
 			// console.log(t);
 			const {
 				cameraPosition, cameraRotationGoalArray, worldCoords, entities, terrainChunks,
+				clearColor,
 			} = options;
+			if (clearColor && clearColor !== this.clearColor) {
+				this.clearColor = (clearColor instanceof Array)
+					? new Color(...clearColor) : new Color(clearColor);
+				this.renderer.setClearColor(this.clearColor);
+			}
 			if (cameraPosition || cameraRotationGoalArray) {
 				const [x = 0, y = 0, z = 0] = cameraRotationGoalArray;
 				this.updateCamera(
@@ -30871,12 +30907,22 @@
 				});
 			}
 			if (terrainChunks) {
+				const visibleTerrainUuids = [];
 				terrainChunks.forEach((chunk) => {
-					const sceneObj = this.entitySceneObjects[chunk.entityId];
+					let sceneObj = this.entitySceneObjects[chunk.entityId];
 					if (sceneObj) {
 						this.applyTextureImageToObject(sceneObj, chunk.textureImage);
 					} else {
-						this.addNewTerrainChunkPlane(chunk);
+						console.log('Adding terrain for chunk', chunk);
+						sceneObj = this.addNewTerrainChunkPlane(chunk);
+					}
+					visibleTerrainUuids.push(sceneObj.uuid);
+				});
+				// Loop over terrain objects (children of terrainGroup)
+				// and remove any not visible
+				this.terrainGroup.children.forEach((terrainChild) => {
+					if (!visibleTerrainUuids.includes(terrainChild.uuid)) {
+						this.removeObject(terrainChild);
 					}
 				});
 			}
@@ -30908,13 +30954,13 @@
 			return boxMesh;
 		}
 
-		async addNewTerrainByHeightMap(heightMapImageSrc) {
-			const heightMap = await DinoScene.loadTexture(heightMapImageSrc);
-			const terrain = this.makeTerrain(heightMap);
-			window.terrain = terrain;
-			this.chunkTerrains.push(terrain);
-			this.worldGroup.add(terrain); // add the terrain to the scene
-		}
+		// async addNewTerrainByHeightMap(heightMapImageSrc) {
+		// 	const heightMap = await DinoScene.loadTexture(heightMapImageSrc);
+		// 	const terrain = this.makeTerrain(heightMap);
+		// 	window.terrain = terrain;
+		// 	this.chunkTerrains.push(terrain);
+		// 	this.worldGroup.add(terrain); // add the terrain to the scene
+		// }
 
 		applyTextureImageToObject(obj, textureImage) {
 			if (!textureImage.complete) {
@@ -30957,7 +31003,9 @@
 
 		makeTerrainChunkPlane(terrainChunk = {}) {
 			// const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
-			const { heights, segments, size, vertexDataSize } = terrainChunk;
+			const { heights, segments, size, vertexDataSize, center,
+				color = 0x55ffbb,
+			} = terrainChunk;
 			// const segments = 8;
 			console.log(segments);
 			const geometry = new PlaneGeometry(size, size, segments, segments);
@@ -30983,8 +31031,8 @@
 			// heightMap.wrapT = THREE.RepeatWrapping;
 
 			const material = new MeshStandardMaterial({
-				opacity: 0.9,
-				color: 0x55ffbb,
+				// opacity: 0.9,
+				color,
 				// map: texture,
 				// vertexColors: true,
 				// wireframe: true,
@@ -30998,9 +31046,12 @@
 			// create the mesh for the terrain
 			const terrain = new Mesh(geometry, material);
 
-			terrain.position.x = 0;
-			terrain.position.y = 0;
-			terrain.position.z = 0;
+			{
+				const [x = 0, y = 0, z = 0] = center;
+				terrain.position.x = x;
+				terrain.position.y = y;
+				terrain.position.z = z;
+			}
 
 			// rotate the terrain to make it look like hills and valleys
 			// terrain.rotation.x = -Math.PI / 2;
@@ -31010,8 +31061,9 @@
 		addNewTerrainChunkPlane(terrainChunk) {
 			const terrain = this.makeTerrainChunkPlane(terrainChunk);
 			this.chunkTerrains.push(terrain);
-			this.worldGroup.add(terrain); // add the terrain to the scene
+			this.terrainGroup.add(terrain); // add the terrain to the scene
 			this.entitySceneObjects[terrainChunk.entityId] = terrain;
+			return terrain;
 		}
 
 		addNewWorldEntity(entity) {
@@ -31850,8 +31902,8 @@
 
 		getChunkCoord(n) {
 			this.validateNumbers({ n }, 'getChunkCoord');
-			const round = (n < 0) ? Math.ceil : Math.floor;
-			return round(n / this.chunkSize);
+			// const round = (n < 0) ? Math.ceil : Math.floor;
+			return Math.round(n / this.chunkSize);
 		}
 
 		/** Get chunk-level x,y,z coordinates from world x,y,z coordinates */
@@ -31940,6 +31992,7 @@
 			document.getElementById('map').innerHTML = '';
 			document.getElementById('map').appendChild(image);
 			return {
+				color: (chunkCoords[X$1] - chunkCoords[Y$1] === 0) ? 0x55ffbb : 0x66eeaa,
 				textureImage: image,
 				image,
 				heights,
@@ -31964,11 +32017,18 @@
 
 		makeTerrainChunks(coords) {
 			if (!coords) throw new Error('Missing coords param');
-			const chunkCoords = this.getChunkCoords(coords);
-			const centerChunk = this.addNewTerrainChunk(chunkCoords);
-			return [
-				centerChunk,
-			];
+			const centerChunkCoords = this.getChunkCoords(coords);
+			// const centerChunk = this.addNewTerrainChunk(centerChunkCoords);
+			// return [centerChunk];
+			const chunks = [];
+			for (let x = -1; x <= 1; x += 1) {
+				for (let y = -1; y <= 1; y += 1) {
+					const newChunkCoords = ArrayCoords.add(centerChunkCoords, [x, y, 0]);
+					const chunk = this.addNewTerrainChunk(newChunkCoords);
+					chunks.push(chunk);
+				}
+			}
+			return chunks;
 		}
 	}
 
@@ -32120,6 +32180,7 @@
 				cameraRotationGoalArray: [this.cameraVerticalRotation, 0, -mainCharacter.facing],
 				worldCoords: [-x, -y, -z],
 				entities: [...actors],
+				clearColor: [.5, .75, 1],
 			}, t).render();
 		}
 
