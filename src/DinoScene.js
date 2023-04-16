@@ -171,12 +171,12 @@ class DinoScene {
 		this.worldGroup.add(terrain); // add the terrain to the scene
 	}
 
-	applyHeightsToGeometry(geometry, heights, size) {
+	applyHeightsToGeometry(geometry, heights, dataSize) {
 		const { position } = geometry.attributes;
 		const vertices = position.array;
-		const heightMultiplier = 2;
+		const heightMultiplier = 1;
 		// I think the problem has to do with size of the geometry not matching the data
-		console.log(vertices.length, position.count, 'size^2', size * size, 'size', size, 'height length', heights.length, heights);
+		console.log(vertices.length, position.count, 'dataSize', dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
 		const heightsSize = heights.length;
 		// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 3) {
 		for (let i = 0; i < position.count; i += 1) {
@@ -205,16 +205,17 @@ class DinoScene {
 	}
 
 	makeTerrainChunkPlane(terrainChunk = {}) {
-		const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
-		const { heights, segments, size } = terrainChunk;
+		// const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
+		const { heights, segments, size, vertexDataSize } = terrainChunk;
 		// const segments = 8;
-		const geometry = new THREE.PlaneGeometry(size, size, segments - 2, segments - 2);
+		console.log(segments);
+		const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
 
 		// Option 1 -- a heightmap -- but it appears to be blank
 
-		// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
-		// heightMap.needsUpdate = true;
-		// console.log(terrainChunk.image.complete);
+		const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+		heightMap.needsUpdate = true;
+		console.log(terrainChunk.image.complete);
 
 		// other attempts:
 		// const heightMap = new THREE.Texture(terrainChunk.image);
@@ -224,7 +225,7 @@ class DinoScene {
 
 		// Option 2 -- This has not worked
 
-		this.applyHeightsToGeometry(geometry, heights, segments);
+		this.applyHeightsToGeometry(geometry, heights, vertexDataSize);
 
 		// Not sure if this is needed:
 		// heightMap.wrapS = THREE.RepeatWrapping;
@@ -233,13 +234,13 @@ class DinoScene {
 		const material = new THREE.MeshStandardMaterial({
 			opacity: 0.9,
 			color: 0x55ffbb,
-			map: texture,
+			// map: texture,
 			// vertexColors: true,
 			// wireframe: true,
 			side: THREE.DoubleSide,
 			// Option 1
-			// displacementMap: heightMap,
-			// displacementScale: 500,
+			displacementMap: heightMap,
+			displacementScale: 500,
 			flatShading: true,
 		});
 

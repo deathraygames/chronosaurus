@@ -15,8 +15,11 @@ class DinoWorld {
 		this.chunkSizeMeters = 128;
 		this.chunkSize = this.unitsPerMeter * this.chunkSizeMeters; // 2560 units
 		this.halfChunkSize = this.chunkSize / 2;
-		this.terrainSegmentSize = 512; // was 10
+		this.terrainSegmentSize = 10; // (originally 10; 256 works for testing)
 		this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize; // 256
+		// While the segments break up the chunk into various triangles, each side
+		// of the terrain has +1 vertex compared to the # of segments
+		this.terrainChunkVertexSize = this.terrainSegmentsPerChunk + 1;
 		this.terrainChunksCache = {};
 	}
 
@@ -33,15 +36,15 @@ class DinoWorld {
 	calcTerrainHeight(x, y) {
 		const noiseScale = 0.002;
 		const minHeight = 0;
-		const maxHeight = 100;
+		const maxHeight = 500;
 		const delta = maxHeight - minHeight;
 		const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
 		let h = clamp(minHeight + (delta * noiseValue), 0, maxHeight);
-		// Add this just to make the terrain more pronounced
-		if (x < 0) {
-			if (y < 0) h = 100;
-			else h = 0;
-		}
+		// Add this just to make the terrain more pronounced for testing
+		// if (x < 0) {
+		// 	if (y < 0) h = 100;
+		// 	else h = 0;
+		// }
 		// Alternative
 		// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
 		// this.validateNumbers({ h, h2 });
@@ -68,7 +71,7 @@ class DinoWorld {
 
 	getChunkTopLeftCoords(chunkCoords) {
 		const center = this.getChunkCenterCoords(chunkCoords);
-		return [center[X] - this.halfChunkSize, center[Y] - this.halfChunkSize, 0];
+		return [center[X] - this.halfChunkSize, center[Y] + this.halfChunkSize, 0];
 	}
 
 	getChunkCenterCoords(chunkCoords) {
@@ -91,31 +94,31 @@ class DinoWorld {
 		return { canvas, ctx };
 	}
 
-	async makeTerrainChunk(chunkCoords) {
+	makeTerrainChunk(chunkCoords) {
 		if (!chunkCoords) throw new Error('makeTerrainChunk missing chunkCoords');
 		const debug = [];
 		const heights = [];
 		const topLeft = this.getChunkTopLeftCoords(chunkCoords);
 		const center = this.getChunkCenterCoords(chunkCoords);
 		const chunkId = this.getChunkId(chunkCoords);
-		const size = this.terrainSegmentsPerChunk + 2;
-		const { canvas, ctx } = this.makeChunkCanvas(size);
+		const dataSize = this.terrainChunkVertexSize;
+		const { canvas, ctx } = this.makeChunkCanvas(dataSize);
 		// x and y here are steps along the terrain segments, not actual world x,y coordinates
 		let x;
 		let y;
-		for (y = 0; y <= size; y += 1) {
+		for (y = 0; y < dataSize; y += 1) {
 			if (!heights[y]) heights[y] = [];
 			if (!debug[y]) debug[y] = [];
-			for (x = 0; x <= size; x += 1) {
+			for (x = 0; x < dataSize; x += 1) {
 				// Convert the x, y steps to actual world x, y
 				const convSize = this.terrainSegmentSize;
 				const worldX = topLeft[X] + (x * convSize);
-				const worldY = topLeft[Y] + (y * convSize);
+				const worldY = topLeft[Y] - (y * convSize);
 				this.validateNumbers({ worldX, worldY });
 				const h = this.calcTerrainHeight(worldX, worldY);
-				if (y === 0) console.log('y = 0', x, h);
+				// if (y === 0) console.log('y = 0', x, h);
 				heights[y][x] = h;
-				// console.log(x, y, '-->', worldX, worldY, heights[y][x]);
+				// console.log('step x,y', x, y, '--> world', worldX, worldY, 'h', h);
 				// if( x > 10) throw new Error();
 				const hmh = Math.min(Math.max(Math.round(h), 0), 255);
 				ctx.fillStyle = `rgba(${hmh},${hmh},${hmh},1)`;
@@ -131,14 +134,14 @@ class DinoWorld {
 		// This is beyond stupid, but the image is somehow not loaded
 		// even though we just created it and populated it synchronously.
 		// So we have to wait for the image to load...
-		const waitForImage = (img) => (
-			new Promise((resolve, reject) => {
-				img.onload = resolve;
-				img.onerror = reject;
-			})
-		);
+		// const waitForImage = (img) => (
+		// 	new Promise((resolve, reject) => {
+		// 		img.onload = resolve;
+		// 		img.onerror = reject;
+		// 	})
+		// );
 		// console.log(image.complete);
-		await waitForImage(image);
+		// await waitForImage(image);
 		// console.log(image.complete);
 
 		document.getElementById('map').innerHTML = '';
@@ -150,24 +153,25 @@ class DinoWorld {
 			center,
 			size: this.chunkSize,
 			segments: this.terrainSegmentsPerChunk,
+			vertexDataSize: dataSize,
 		};
 	}
 
-	async addNewTerrainChunk(chunkCoords) {
+	addNewTerrainChunk(chunkCoords) {
 		const chunkId = this.getChunkId(chunkCoords);
 		// Get it from cache if its already been created
 		if (this.terrainChunksCache[chunkId]) return this.terrainChunksCache[chunkId];
 		// Otherwise create it
-		const chunk = await this.makeTerrainChunk(chunkCoords);
+		const chunk = this.makeTerrainChunk(chunkCoords);
 		// ...and cache it
 		this.terrainChunksCache[chunk.entityId] = chunk;
 		return chunk;
 	}
 
-	async makeTerrainChunks(coords) {
+	makeTerrainChunks(coords) {
 		if (!coords) throw new Error('Missing coords param');
 		const chunkCoords = this.getChunkCoords(coords);
-		const centerChunk = await this.addNewTerrainChunk(chunkCoords);
+		const centerChunk = this.addNewTerrainChunk(chunkCoords);
 		return [
 			centerChunk,
 		];

@@ -75,13 +75,14 @@ class DinoGame extends GenericGame {
 		actor.setZ(h);
 	}
 
-	async animationTick() {
+	animationTick() {
 		const { mainCharacter, actors } = this;
 		const zoom = this.mouseWheelWatcher.percent * 100;
 		this.mouseWheelWatcher.update();
-		this.cameraPosition[Z] = 1300 + (zoom ** 2);
+		this.cameraPosition[Z] = 50 + (zoom ** 2);
+		this.cameraPosition[Y] = -100 - zoom;
 		const [x, y, z] = mainCharacter.coords;
-		const terrainChunks = await this.world.makeTerrainChunks(mainCharacter.coords);
+		const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
 		actors.forEach((actor) => this.applyPhysics(actor, this.world));
 		this.gameScene.update({
 			terrainChunks,
@@ -105,8 +106,8 @@ class DinoGame extends GenericGame {
 		this.pointerLocker
 			.setup() // Needs to happen after the canvas is created
 			.on('lockedMouseMove', ({ x, y }) => {
-				// this.mainCharacter.facing += x * 0.001;
-				this.cameraPosition[X] += x * 1;
+				this.mainCharacter.facing += x * 0.001;
+				// this.cameraPosition[X] += x * 1;
 				this.cameraPosition[Y] += y * 1;
 			});
 		// gameScene.addBox();

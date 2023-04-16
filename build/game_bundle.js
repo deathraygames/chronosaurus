@@ -30892,12 +30892,12 @@
 			this.worldGroup.add(terrain); // add the terrain to the scene
 		}
 
-		applyHeightsToGeometry(geometry, heights, size) {
+		applyHeightsToGeometry(geometry, heights, dataSize) {
 			const { position } = geometry.attributes;
 			const vertices = position.array;
-			const heightMultiplier = 2;
+			const heightMultiplier = 1;
 			// I think the problem has to do with size of the geometry not matching the data
-			console.log(vertices.length, position.count, 'size^2', size * size, 'size', size, 'height length', heights.length, heights);
+			console.log(vertices.length, position.count, 'dataSize', dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
 			const heightsSize = heights.length;
 			// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 3) {
 			for (let i = 0; i < position.count; i += 1) {
@@ -30926,16 +30926,17 @@
 		}
 
 		makeTerrainChunkPlane(terrainChunk = {}) {
-			const texture = new TextureLoader().load('images/test-grid.jpg');
-			const { heights, segments, size } = terrainChunk;
+			// const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
+			const { heights, segments, size, vertexDataSize } = terrainChunk;
 			// const segments = 8;
-			const geometry = new PlaneGeometry(size, size, segments - 2, segments - 2);
+			console.log(segments);
+			const geometry = new PlaneGeometry(size, size, segments, segments);
 
 			// Option 1 -- a heightmap -- but it appears to be blank
 
-			// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
-			// heightMap.needsUpdate = true;
-			// console.log(terrainChunk.image.complete);
+			const heightMap = new Texture(terrainChunk.image, {}, ClampToEdgeWrapping, ClampToEdgeWrapping, NearestFilter, NearestFilter, RGBAFormat, UnsignedByteType, 0);
+			heightMap.needsUpdate = true;
+			console.log(terrainChunk.image.complete);
 
 			// other attempts:
 			// const heightMap = new THREE.Texture(terrainChunk.image);
@@ -30945,7 +30946,7 @@
 
 			// Option 2 -- This has not worked
 
-			this.applyHeightsToGeometry(geometry, heights, segments);
+			this.applyHeightsToGeometry(geometry, heights, vertexDataSize);
 
 			// Not sure if this is needed:
 			// heightMap.wrapS = THREE.RepeatWrapping;
@@ -30954,13 +30955,13 @@
 			const material = new MeshStandardMaterial({
 				opacity: 0.9,
 				color: 0x55ffbb,
-				map: texture,
+				// map: texture,
 				// vertexColors: true,
 				// wireframe: true,
 				side: DoubleSide,
 				// Option 1
-				// displacementMap: heightMap,
-				// displacementScale: 500,
+				displacementMap: heightMap,
+				displacementScale: 500,
 				flatShading: true,
 			});
 
@@ -31772,8 +31773,11 @@
 			this.chunkSizeMeters = 128;
 			this.chunkSize = this.unitsPerMeter * this.chunkSizeMeters; // 2560 units
 			this.halfChunkSize = this.chunkSize / 2;
-			this.terrainSegmentSize = 512; // was 10
+			this.terrainSegmentSize = 10; // (originally 10; 256 works for testing)
 			this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize; // 256
+			// While the segments break up the chunk into various triangles, each side
+			// of the terrain has +1 vertex compared to the # of segments
+			this.terrainChunkVertexSize = this.terrainSegmentsPerChunk + 1;
 			this.terrainChunksCache = {};
 		}
 
@@ -31790,15 +31794,15 @@
 		calcTerrainHeight(x, y) {
 			const noiseScale = 0.002;
 			const minHeight = 0;
-			const maxHeight = 100;
+			const maxHeight = 500;
 			const delta = maxHeight - minHeight;
 			const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
 			let h = clamp(minHeight + (delta * noiseValue), 0, maxHeight);
-			// Add this just to make the terrain more pronounced
-			if (x < 0) {
-				if (y < 0) h = 100;
-				else h = 0;
-			}
+			// Add this just to make the terrain more pronounced for testing
+			// if (x < 0) {
+			// 	if (y < 0) h = 100;
+			// 	else h = 0;
+			// }
 			// Alternative
 			// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
 			// this.validateNumbers({ h, h2 });
@@ -31825,7 +31829,7 @@
 
 		getChunkTopLeftCoords(chunkCoords) {
 			const center = this.getChunkCenterCoords(chunkCoords);
-			return [center[X$1] - this.halfChunkSize, center[Y$1] - this.halfChunkSize, 0];
+			return [center[X$1] - this.halfChunkSize, center[Y$1] + this.halfChunkSize, 0];
 		}
 
 		getChunkCenterCoords(chunkCoords) {
@@ -31848,31 +31852,31 @@
 			return { canvas, ctx };
 		}
 
-		async makeTerrainChunk(chunkCoords) {
+		makeTerrainChunk(chunkCoords) {
 			if (!chunkCoords) throw new Error('makeTerrainChunk missing chunkCoords');
 			const debug = [];
 			const heights = [];
 			const topLeft = this.getChunkTopLeftCoords(chunkCoords);
 			const center = this.getChunkCenterCoords(chunkCoords);
 			const chunkId = this.getChunkId(chunkCoords);
-			const size = this.terrainSegmentsPerChunk + 2;
-			const { canvas, ctx } = this.makeChunkCanvas(size);
+			const dataSize = this.terrainChunkVertexSize;
+			const { canvas, ctx } = this.makeChunkCanvas(dataSize);
 			// x and y here are steps along the terrain segments, not actual world x,y coordinates
 			let x;
 			let y;
-			for (y = 0; y <= size; y += 1) {
+			for (y = 0; y < dataSize; y += 1) {
 				if (!heights[y]) heights[y] = [];
 				if (!debug[y]) debug[y] = [];
-				for (x = 0; x <= size; x += 1) {
+				for (x = 0; x < dataSize; x += 1) {
 					// Convert the x, y steps to actual world x, y
 					const convSize = this.terrainSegmentSize;
 					const worldX = topLeft[X$1] + (x * convSize);
-					const worldY = topLeft[Y$1] + (y * convSize);
+					const worldY = topLeft[Y$1] - (y * convSize);
 					this.validateNumbers({ worldX, worldY });
 					const h = this.calcTerrainHeight(worldX, worldY);
-					if (y === 0) console.log('y = 0', x, h);
+					// if (y === 0) console.log('y = 0', x, h);
 					heights[y][x] = h;
-					// console.log(x, y, '-->', worldX, worldY, heights[y][x]);
+					// console.log('step x,y', x, y, '--> world', worldX, worldY, 'h', h);
 					// if( x > 10) throw new Error();
 					const hmh = Math.min(Math.max(Math.round(h), 0), 255);
 					ctx.fillStyle = `rgba(${hmh},${hmh},${hmh},1)`;
@@ -31888,14 +31892,14 @@
 			// This is beyond stupid, but the image is somehow not loaded
 			// even though we just created it and populated it synchronously.
 			// So we have to wait for the image to load...
-			const waitForImage = (img) => (
-				new Promise((resolve, reject) => {
-					img.onload = resolve;
-					img.onerror = reject;
-				})
-			);
+			// const waitForImage = (img) => (
+			// 	new Promise((resolve, reject) => {
+			// 		img.onload = resolve;
+			// 		img.onerror = reject;
+			// 	})
+			// );
 			// console.log(image.complete);
-			await waitForImage(image);
+			// await waitForImage(image);
 			// console.log(image.complete);
 
 			document.getElementById('map').innerHTML = '';
@@ -31907,24 +31911,25 @@
 				center,
 				size: this.chunkSize,
 				segments: this.terrainSegmentsPerChunk,
+				vertexDataSize: dataSize,
 			};
 		}
 
-		async addNewTerrainChunk(chunkCoords) {
+		addNewTerrainChunk(chunkCoords) {
 			const chunkId = this.getChunkId(chunkCoords);
 			// Get it from cache if its already been created
 			if (this.terrainChunksCache[chunkId]) return this.terrainChunksCache[chunkId];
 			// Otherwise create it
-			const chunk = await this.makeTerrainChunk(chunkCoords);
+			const chunk = this.makeTerrainChunk(chunkCoords);
 			// ...and cache it
 			this.terrainChunksCache[chunk.entityId] = chunk;
 			return chunk;
 		}
 
-		async makeTerrainChunks(coords) {
+		makeTerrainChunks(coords) {
 			if (!coords) throw new Error('Missing coords param');
 			const chunkCoords = this.getChunkCoords(coords);
-			const centerChunk = await this.addNewTerrainChunk(chunkCoords);
+			const centerChunk = this.addNewTerrainChunk(chunkCoords);
 			return [
 				centerChunk,
 			];
@@ -32062,13 +32067,14 @@
 			actor.setZ(h);
 		}
 
-		async animationTick() {
+		animationTick() {
 			const { mainCharacter, actors } = this;
 			const zoom = this.mouseWheelWatcher.percent * 100;
 			this.mouseWheelWatcher.update();
-			this.cameraPosition[Z] = 1300 + (zoom ** 2);
+			this.cameraPosition[Z] = 50 + (zoom ** 2);
+			this.cameraPosition[Y] = -100 - zoom;
 			const [x, y, z] = mainCharacter.coords;
-			const terrainChunks = await this.world.makeTerrainChunks(mainCharacter.coords);
+			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
 			actors.forEach((actor) => this.applyPhysics(actor, this.world));
 			this.gameScene.update({
 				terrainChunks,
@@ -32092,8 +32098,8 @@
 			this.pointerLocker
 				.setup() // Needs to happen after the canvas is created
 				.on('lockedMouseMove', ({ x, y }) => {
-					// this.mainCharacter.facing += x * 0.001;
-					this.cameraPosition[X] += x * 1;
+					this.mainCharacter.facing += x * 0.001;
+					// this.cameraPosition[X] += x * 1;
 					this.cameraPosition[Y] += y * 1;
 				});
 			// gameScene.addBox();
