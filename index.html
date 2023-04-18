@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 	<title>Chronosaurus</title>
 	<meta charset="utf-8">
@@ -14,6 +14,20 @@
 	<main id="main">
 		<div id="map"></div>
 		<!-- <img src="./images/BritanniaHeightMap2.jpg" id="x" style="width: 100px" /> -->
+		<div id="interaction">
+			<div id="crosshairs" class="crosshairs-horizontal">
+				<div class="crosshairs-vertical"></div>
+			</div>
+			<div id="interaction-details" class="ui-hide">
+				<div id="interaction-target"><!-- Item --></div>
+				<div id="interaction-action">
+					[E]
+					<!-- [E] Dig -->
+					<span id="interaction-action-name"></span>
+				</div>
+			</div>
+		</div>
+		<div id="debug"></div>
 	</main>
 	<script type="module" src="./build/game_bundle.js"></script>
 </body>

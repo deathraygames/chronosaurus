@@ -1,6 +1,295 @@
 (function () {
 	'use strict';
 
+	// eslint-disable-next-line no-nested-ternary
+	const clamp$2 = (v, min = 0, max = 1) => (v < min ? min : v > max ? max : v);
+
+	const { PI: PI$2 } = Math;
+	const DEGREES_PER_RADIAN = (180 / PI$2);
+
+	// Constants
+	const NORTH = 0;
+	const EAST = 1;
+	const SOUTH = 2;
+	const WEST = 3;
+	const X$3 = 0;
+	const Y$3 = 1;
+	const Z$3 = 2;
+	const DIRECTION_NAMES = Object.freeze(['North', 'East', 'South', 'West']);
+	const DIRECTIONS = Object.freeze([NORTH, EAST, SOUTH, WEST]);
+	const FACING_RADIANS = Object.freeze([0, PI$2 * 0.5, PI$2, PI$2 * 1.5]);
+
+	//       /^\ -y North
+	// West   |
+	// -x <---o---> +x East
+	//        |
+	//       \./ +y South
+
+	class ArrayCoords {
+		static getRelativeCoordsInDirection(coords, facing, forward = 0, strafe = 0, up = 0) {
+			const newCoords = [...coords];
+			const facingEastWest = (facing % 2);
+			const forwardAxis = facingEastWest ? X$3 : Y$3;
+			const strafeAxis = facingEastWest ? Y$3 : X$3;
+			const forwardDirection = (facing === NORTH || facing === WEST) ? -1 : 1;
+			const strafeDirection = (facing === NORTH || facing === EAST) ? 1 : -1;
+			newCoords[forwardAxis] += (forward * forwardDirection);
+			newCoords[strafeAxis] += (strafe * strafeDirection);
+			newCoords[Z$3] += up;
+			return newCoords;
+		}
+
+		static normalizeDirection(facing) {
+			const fixedFacing = facing % DIRECTIONS.length;
+			return (fixedFacing < 0) ? (DIRECTIONS.length + fixedFacing) : fixedFacing;
+		}
+
+		static getDirectionName(facingParam) {
+			const facing = ArrayCoords.normalizeDirection(facingParam);
+			return DIRECTION_NAMES[facing];
+		}
+
+		static getDirectionRadians(facingParam) {
+			const facing = ArrayCoords.normalizeDirection(facingParam);
+			return FACING_RADIANS[facing];
+		}
+
+		static getDistance(coords1, coords2) {
+			return Math.sqrt(
+				(coords2[X$3] - coords1[X$3]) ** 2
+				+ (coords2[Y$3] - coords1[Y$3]) ** 2
+				+ (coords2[Z$3] - coords1[Z$3]) ** 2,
+			);
+		}
+
+		/**
+		 * Get angle (in radians) from one 2d point to another;
+		 * e.g., From 0,0 to 0,1 (up) --> 0 ...to 1,0 (right) --> half pi ...to 0,-1 (below) --> pi
+		 */
+		static getAngleFacing(coords1, coords2) {
+			const dx = coords2[X$3] - coords1[X$3];
+			const dy = coords2[Y$3] - coords1[Y$3];
+			return Math.atan2(dx, dy);
+		}
+
+		static checkEqual(coords1, coords2) {
+			return (coords1[X$3] === coords2[X$3] && coords1[Y$3] === coords2[Y$3] && coords1[Z$3] === coords2[Z$3]);
+		}
+
+		static subtract(coords1, coords2) {
+			return [coords1[X$3] - coords2[X$3], coords1[Y$3] - coords2[Y$3], coords1[Z$3] - coords2[Z$3]];
+		}
+
+		static add(coords1, coords2) {
+			return [coords1[X$3] + coords2[X$3], coords1[Y$3] + coords2[Y$3], coords1[Z$3] + coords2[Z$3]];
+		}
+
+		static multiply(coords, m) {
+			return [
+				coords[X$3] * m,
+				coords[Y$3] * m,
+				coords[Z$3] * m,
+			];
+		}
+
+		static clampEachCoord(coords, min, max) {
+			return [
+				clamp$2(coords[X$3], min, max),
+				clamp$2(coords[Y$3], min, max),
+				clamp$2(coords[Z$3], min, max),
+			];
+		}
+
+		static radiansToDegrees(radians) {
+			// return (radians * DEGREES_PER_RADIAN) - 90;
+			return (radians * DEGREES_PER_RADIAN);
+		}
+
+		static degreesToRadians(deg) {
+			// return (deg + 90) / DEGREES_PER_RADIAN;
+			return deg / DEGREES_PER_RADIAN;
+		}
+
+		// Note: currently only 2d
+		static cartesianToPolar([x = 0, y = 0]) {
+			const r = Math.sqrt(x * x + y * y);
+			const radians = ArrayCoords.cartesianToRadians([x, y]);
+			const degrees = ArrayCoords.radiansToDegrees(radians);
+			return { r, radians, theta: radians, degrees };
+		}
+
+		static polarToCartesian(r, radians) {
+			const x = r * Math.cos(radians);
+			const y = r * Math.sin(radians);
+			return [x, y];
+		}
+
+		// Note: currently only 2d
+		static cartesianToRadians([x = 0, y = 0]) {
+			return Math.atan2(y, x);
+		}
+
+		// Note: currently only 2d
+		static cartesianToDegrees([x = 0, y = 0]) {
+			return ArrayCoords.radiansToDegrees(ArrayCoords.cartesianToRadians([x, y]));
+		}
+	}
+
+	// Indices
+	ArrayCoords.X = X$3;
+	ArrayCoords.Y = Y$3;
+	ArrayCoords.Z = Z$3;
+	ArrayCoords.NORTH = NORTH;
+	ArrayCoords.EAST = EAST;
+	ArrayCoords.SOUTH = SOUTH;
+	ArrayCoords.WEST = WEST;
+	ArrayCoords.DIRECTIONS = DIRECTIONS;
+
+	const MAGIC_NUMBER = 10000;
+	const SEED_MAGIC_INT = 9999999;
+	const SEED_MAGIC_BOOL_TRUE = 93759;
+	const SEED_MAGIC_BOOL_FALSE = 1012638;
+	const RADIX$1 = 36;
+
+	class PseudoRandomizer {
+		constructor(seed) {
+			if (typeof seed === 'number') {
+				this.seed = seed;
+			} else if (seed instanceof Array) {
+				this.seed = PseudoRandomizer.makeSeed(seed);
+			} else {
+				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
+			}
+			if (Number.isNaN(this.seed)) {
+				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
+			}
+			this.initialSeed = this.seed;
+		}
+
+		static convertStringToRadixSafeString(str = '') {
+			return String(str).split('').map((char) => {
+				const int = parseInt(char, RADIX$1);
+				return (Number.isNaN(int)) ? char.charCodeAt(0).toString(RADIX$1) : char;
+			}).join('');
+		}
+
+		static convertStringToNumber(str = '') {
+			return parseInt(PseudoRandomizer.convertStringToRadixSafeString(str), RADIX$1);
+		}
+
+		static makeSeed(arr = []) {
+			const seed = arr.reduce((sum, value) => {
+				const typeOfValue = typeof value;
+				let num = 1;
+				if (typeOfValue === 'number') {
+					num = value;
+				} else if (typeOfValue === 'object') {
+					num = parseInt(JSON.stringify(value), RADIX$1);
+				} else if (typeOfValue === 'string') {
+					num = parseInt(value, RADIX$1);
+				} else if (typeOfValue === 'boolean') {
+					num = (value ? SEED_MAGIC_BOOL_TRUE : SEED_MAGIC_BOOL_FALSE);
+				}
+				return PseudoRandomizer.getPseudoRandInt(sum, SEED_MAGIC_INT) + num;
+			}, 0);
+			return seed;
+		}
+
+		static getPseudoRand(seed) {
+			// http://stackoverflow.com/a/19303725/1766230
+			const x = Math.sin(seed) * MAGIC_NUMBER;
+			return x - Math.floor(x);
+		}
+
+		static getPseudoRandInt(seed, n) {
+			const r = PseudoRandomizer.getPseudoRand(seed);
+			return Math.floor(r * n);
+		}
+
+		makeArray(length = 1) {
+			const arr = [];
+			for (let i = 0; i < length; i += 1) {
+				arr.push(this.random());
+			}
+			return arr;
+		}
+
+		random(n) {
+			this.seed += 1;
+			const r = PseudoRandomizer.getPseudoRand(this.seed);
+			if (typeof n === 'number') return Math.floor(r * n);
+			return r;
+		}
+
+		getSeedString() {
+			return this.seed.toString(RADIX$1);
+		}
+
+		reset() {
+			this.seed = this.initialSeed;
+		}
+	}
+
+	const MAGIC = 999999;
+	const RADIX = 36;
+
+	class Random {
+		constructor(n = 1) {
+			this.n = Math.random() * n;
+		}
+
+		get() {
+			return this.n;
+		}
+
+		static get() {
+			return Math.random();
+		}
+
+		static random() {
+			return Math.random();
+		}
+
+		static randomInt(n = 0) {
+			return Math.floor(Math.random() * n);
+		}
+
+		static randomBell(n = 1) {
+			return (Math.random() * n) - (Math.random() * n);
+		}
+
+		/** @returns a random # of radians between 0 and 2 PI */
+		static randomAngle() {
+			return Math.random() * Math.PI * 2;
+		}
+
+		static pickRandom(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		static randomString(n = MAGIC) {
+			return Math.round(Math.random() * n).toString(RADIX);
+		}
+
+		static uniqueString() {
+			return Number(new Date()).toString(RADIX) + Random.randomString();
+		}
+
+		// alias
+		static pick(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		/**
+		 * Chance of random event based on 0-1 odds
+		 * @param {Number} odds - float 0-1 for chance of true
+		 * @returns Boolean
+		 */
+		static chance(odds = 0) {
+			return Math.random() > odds;
+		}
+	}
+
 	class Observer {
 		constructor() {
 			this.eventListeners = {};
@@ -167,6 +456,7 @@
 				}
 				// console.log('Preventing default, then locking');
 				event.preventDefault();
+				event.stopPropagation();
 				await this.lock();
 			};
 			this.handleLockUnlock = async (event) => {
@@ -184,6 +474,7 @@
 				}
 				// console.log('Preventing default, then locking');
 				event.preventDefault();
+				event.stopPropagation();
 				await this.unlock();
 			};
 			this.doc = window.document;
@@ -487,7 +778,7 @@
 
 	}
 
-	function clamp$2( value, min, max ) {
+	function clamp$1( value, min, max ) {
 
 		return Math.max( min, Math.min( max, value ) );
 
@@ -949,7 +1240,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp$2( theta, - 1, 1 ) );
+			return Math.acos( clamp$1( theta, - 1, 1 ) );
 
 		}
 
@@ -3313,7 +3604,7 @@
 
 		angleTo( q ) {
 
-			return 2 * Math.acos( Math.abs( clamp$2( this.dot( q ), - 1, 1 ) ) );
+			return 2 * Math.acos( Math.abs( clamp$1( this.dot( q ), - 1, 1 ) ) );
 
 		}
 
@@ -4130,7 +4421,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp$2( theta, - 1, 1 ) );
+			return Math.acos( clamp$1( theta, - 1, 1 ) );
 
 		}
 
@@ -6534,7 +6825,7 @@
 
 				case 'XYZ':
 
-					this._y = Math.asin( clamp$2( m13, - 1, 1 ) );
+					this._y = Math.asin( clamp$1( m13, - 1, 1 ) );
 
 					if ( Math.abs( m13 ) < 0.9999999 ) {
 
@@ -6552,7 +6843,7 @@
 
 				case 'YXZ':
 
-					this._x = Math.asin( - clamp$2( m23, - 1, 1 ) );
+					this._x = Math.asin( - clamp$1( m23, - 1, 1 ) );
 
 					if ( Math.abs( m23 ) < 0.9999999 ) {
 
@@ -6570,7 +6861,7 @@
 
 				case 'ZXY':
 
-					this._x = Math.asin( clamp$2( m32, - 1, 1 ) );
+					this._x = Math.asin( clamp$1( m32, - 1, 1 ) );
 
 					if ( Math.abs( m32 ) < 0.9999999 ) {
 
@@ -6588,7 +6879,7 @@
 
 				case 'ZYX':
 
-					this._y = Math.asin( - clamp$2( m31, - 1, 1 ) );
+					this._y = Math.asin( - clamp$1( m31, - 1, 1 ) );
 
 					if ( Math.abs( m31 ) < 0.9999999 ) {
 
@@ -6606,7 +6897,7 @@
 
 				case 'YZX':
 
-					this._z = Math.asin( clamp$2( m21, - 1, 1 ) );
+					this._z = Math.asin( clamp$1( m21, - 1, 1 ) );
 
 					if ( Math.abs( m21 ) < 0.9999999 ) {
 
@@ -6624,7 +6915,7 @@
 
 				case 'XZY':
 
-					this._z = Math.asin( - clamp$2( m12, - 1, 1 ) );
+					this._z = Math.asin( - clamp$1( m12, - 1, 1 ) );
 
 					if ( Math.abs( m12 ) < 0.9999999 ) {
 
@@ -8687,8 +8978,8 @@
 
 			// h,s,l ranges are in 0.0 - 1.0
 			h = euclideanModulo( h, 1 );
-			s = clamp$2( s, 0, 1 );
-			l = clamp$2( l, 0, 1 );
+			s = clamp$1( s, 0, 1 );
+			l = clamp$1( l, 0, 1 );
 
 			if ( s === 0 ) {
 
@@ -8912,7 +9203,7 @@
 
 			ColorManagement.fromWorkingColorSpace( _color.copy( this ), colorSpace );
 
-			return clamp$2( _color.r * 255, 0, 255 ) << 16 ^ clamp$2( _color.g * 255, 0, 255 ) << 8 ^ clamp$2( _color.b * 255, 0, 255 ) << 0;
+			return clamp$1( _color.r * 255, 0, 255 ) << 16 ^ clamp$1( _color.g * 255, 0, 255 ) << 8 ^ clamp$1( _color.b * 255, 0, 255 ) << 0;
 
 		}
 
@@ -29621,6 +29912,138 @@
 
 	}
 
+	class SphereGeometry extends BufferGeometry {
+
+		constructor( radius = 1, widthSegments = 32, heightSegments = 16, phiStart = 0, phiLength = Math.PI * 2, thetaStart = 0, thetaLength = Math.PI ) {
+
+			super();
+
+			this.type = 'SphereGeometry';
+
+			this.parameters = {
+				radius: radius,
+				widthSegments: widthSegments,
+				heightSegments: heightSegments,
+				phiStart: phiStart,
+				phiLength: phiLength,
+				thetaStart: thetaStart,
+				thetaLength: thetaLength
+			};
+
+			widthSegments = Math.max( 3, Math.floor( widthSegments ) );
+			heightSegments = Math.max( 2, Math.floor( heightSegments ) );
+
+			const thetaEnd = Math.min( thetaStart + thetaLength, Math.PI );
+
+			let index = 0;
+			const grid = [];
+
+			const vertex = new Vector3();
+			const normal = new Vector3();
+
+			// buffers
+
+			const indices = [];
+			const vertices = [];
+			const normals = [];
+			const uvs = [];
+
+			// generate vertices, normals and uvs
+
+			for ( let iy = 0; iy <= heightSegments; iy ++ ) {
+
+				const verticesRow = [];
+
+				const v = iy / heightSegments;
+
+				// special case for the poles
+
+				let uOffset = 0;
+
+				if ( iy === 0 && thetaStart === 0 ) {
+
+					uOffset = 0.5 / widthSegments;
+
+				} else if ( iy === heightSegments && thetaEnd === Math.PI ) {
+
+					uOffset = - 0.5 / widthSegments;
+
+				}
+
+				for ( let ix = 0; ix <= widthSegments; ix ++ ) {
+
+					const u = ix / widthSegments;
+
+					// vertex
+
+					vertex.x = - radius * Math.cos( phiStart + u * phiLength ) * Math.sin( thetaStart + v * thetaLength );
+					vertex.y = radius * Math.cos( thetaStart + v * thetaLength );
+					vertex.z = radius * Math.sin( phiStart + u * phiLength ) * Math.sin( thetaStart + v * thetaLength );
+
+					vertices.push( vertex.x, vertex.y, vertex.z );
+
+					// normal
+
+					normal.copy( vertex ).normalize();
+					normals.push( normal.x, normal.y, normal.z );
+
+					// uv
+
+					uvs.push( u + uOffset, 1 - v );
+
+					verticesRow.push( index ++ );
+
+				}
+
+				grid.push( verticesRow );
+
+			}
+
+			// indices
+
+			for ( let iy = 0; iy < heightSegments; iy ++ ) {
+
+				for ( let ix = 0; ix < widthSegments; ix ++ ) {
+
+					const a = grid[ iy ][ ix + 1 ];
+					const b = grid[ iy ][ ix ];
+					const c = grid[ iy + 1 ][ ix ];
+					const d = grid[ iy + 1 ][ ix + 1 ];
+
+					if ( iy !== 0 || thetaStart > 0 ) indices.push( a, b, d );
+					if ( iy !== heightSegments - 1 || thetaEnd < Math.PI ) indices.push( b, c, d );
+
+				}
+
+			}
+
+			// build geometry
+
+			this.setIndex( indices );
+			this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
+			this.setAttribute( 'normal', new Float32BufferAttribute( normals, 3 ) );
+			this.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
+
+		}
+
+		copy( source ) {
+
+			super.copy( source );
+
+			this.parameters = Object.assign( {}, source.parameters );
+
+			return this;
+
+		}
+
+		static fromJSON( data ) {
+
+			return new SphereGeometry( data.radius, data.widthSegments, data.heightSegments, data.phiStart, data.phiLength, data.thetaStart, data.thetaLength );
+
+		}
+
+	}
+
 	class MeshStandardMaterial extends Material {
 
 		constructor( parameters ) {
@@ -30871,6 +31294,11 @@
 			console.log('removing object', entityId, uuid);
 		}
 
+		static makeColor(colorParam) {
+			return (colorParam instanceof Array)
+				? new Color(...colorParam) : new Color(colorParam);
+		}
+
 		update(options = {}, t = 5) { // time `t` is in milliseconds
 			// console.log(t);
 			const {
@@ -30878,8 +31306,7 @@
 				clearColor,
 			} = options;
 			if (clearColor && clearColor !== this.clearColor) {
-				this.clearColor = (clearColor instanceof Array)
-					? new Color(...clearColor) : new Color(clearColor);
+				this.clearColor = DinoScene.makeColor(clearColor);
 				this.renderer.setClearColor(this.clearColor);
 			}
 			if (cameraPosition || cameraRotationGoalArray) {
@@ -30895,14 +31322,24 @@
 				this.worldGroup.position.copy(DinoScene.convertCoordsToVector3(worldCoords));
 			}
 			if (entities) {
+				const visibleEntityUuids = [];
 				entities.forEach((entity) => {
-					const sceneObj = this.entitySceneObjects[entity.entityId];
+					let sceneObj = this.entitySceneObjects[entity.entityId];
 					if (sceneObj) {
 						sceneObj.position.copy(DinoScene.convertCoordsToVector3(entity.coords));
 						sceneObj.rotation.set(0, 0, -entity.facing);
 						// TODO: see if position or anything else has changed
 					} else {
-						this.addNewWorldEntity(entity);
+						sceneObj = this.addNewWorldEntity(entity);
+						if (!sceneObj) console.warn('Could not add entity to scene', entity);
+					}
+					visibleEntityUuids.push(sceneObj.uuid);
+				});
+				// Loop over all world objects and remove any not visible
+				this.worldGroup.children.forEach((terrainChild) => {
+					if (terrainChild.isGroup) return;
+					if (!visibleEntityUuids.includes(terrainChild.uuid)) {
+						this.removeObject(terrainChild);
 					}
 				});
 			}
@@ -31007,7 +31444,7 @@
 				color = 0x55ffbb,
 			} = terrainChunk;
 			// const segments = 8;
-			console.log(segments);
+			// console.log(segments);
 			const geometry = new PlaneGeometry(size, size, segments, segments);
 
 			// Option 1 -- a heightmap -- but it appears to be blank
@@ -31041,6 +31478,7 @@
 				// displacementMap: heightMap,
 				// displacementScale: 500,
 				flatShading: true,
+				// receiveShadow: true,
 			});
 
 			// create the mesh for the terrain
@@ -31066,16 +31504,39 @@
 			return terrain;
 		}
 
+		makeEntityMaterial(entity, color, texture) {
+			const materialOptions = {};
+			if (color) materialOptions.color = color;
+			if (entity.texture) materialOptions.map = texture;
+			const material = new MeshStandardMaterial(materialOptions);
+			return material;
+		}
+
 		addNewWorldEntity(entity) {
-			const box = this.makeBox();
-			box.position.copy(this.convertCoordsToVector3(entity.coords));
-			this.worldGroup.add(box);
-			this.entitySceneObjects[entity.entityId] = box;
+			if (!entity.renderAs) return null;
+			const { renderAs, size } = entity;
+			let sceneObj; // mesh, plane, sprite, etc.
+			let color = (entity.color) ? DinoScene.makeColor(entity.color) : null;
+			if (renderAs === 'box') {
+				const geometry = new BoxGeometry(size, size, size);
+				const material = this.makeEntityMaterial(entity, color);
+				sceneObj = new Mesh(geometry, material);
+			} else if (renderAs === 'sphere') {
+				const geometry = new SphereGeometry(size, 16, 8);
+				const material = this.makeEntityMaterial(entity, color);
+				sceneObj = new Mesh(geometry, material);
+			}
+			// TODO: renderAs other types
+
+			sceneObj.position.copy(this.convertCoordsToVector3(entity.coords));
+			this.worldGroup.add(sceneObj);
+			this.entitySceneObjects[entity.entityId] = sceneObj;
+			return sceneObj;
 		}
 	}
 
 	// import { clamp } from 'three/src/math/mathutils.js';
-	const clamp$1 = (v, min = 0, max = 1) => v < min ? min : v > max ? max : v;
+	const clamp = (v, min = 0, max = 1) => v < min ? min : v > max ? max : v;
 
 	const WHEEL_PX = 25;
 	const WHEEL_EVENT = 'wheel';
@@ -31096,7 +31557,7 @@
 
 		set mouseWheel(n) {
 			this.lastMouseWheelDeltaY = n;
-			this.y = clamp$1(this.y + n, this.min, this.max);
+			this.y = clamp(this.y + n, this.min, this.max);
 		}
 
 		get percent() { return this.getPercent(); }
@@ -31129,216 +31590,147 @@
 		}
 	}
 
-	// Constants
-	const NORTH = 0;
-	const EAST = 1;
-	const SOUTH = 2;
-	const WEST = 3;
-	const X$2 = 0;
-	const Y$2 = 1;
-	const Z$2 = 2;
-	const DIRECTION_NAMES = Object.freeze(['North', 'East', 'South', 'West']);
-	const DIRECTIONS = Object.freeze([NORTH, EAST, SOUTH, WEST]);
-	const RADIANS = Object.freeze([0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]);
+	const { X: X$2, Y: Y$2, Z: Z$2 } = ArrayCoords;
 
-	//       /^\ -y North
-	// West   |
-	// -x <---o---> +x East
-	//        |
-	//       \./ +y South
-
-	class ArrayCoords {
-		static getRelativeCoordsInDirection(coords, facing, forward = 0, strafe = 0, up = 0) {
-			const newCoords = [...coords];
-			const facingEastWest = (facing % 2);
-			const forwardAxis = facingEastWest ? X$2 : Y$2;
-			const strafeAxis = facingEastWest ? Y$2 : X$2;
-			const forwardDirection = (facing === NORTH || facing === WEST) ? -1 : 1;
-			const strafeDirection = (facing === NORTH || facing === EAST) ? 1 : -1;
-			newCoords[forwardAxis] += (forward * forwardDirection);
-			newCoords[strafeAxis] += (strafe * strafeDirection);
-			newCoords[Z$2] += up;
-			return newCoords;
+	class Entity {
+		constructor(properties = {}) {
+			this.entityId = Random.uniqueString();
+			this.isEntity = true;
+			this.coords = [0, 0, 0];
+			this.facing = 0; // radians
+			this.vel = [0, 0, 0];
+			this.acc = [0, 0, 0];
+			// Good to stop velocity from skyrocketing
+			this.maxVelocity = 500;
+			this.movementForce = 0; // track movement force just to know when entity is moving on its own
+			this.tags = [];
+			this.renderAs = 'box';
+			this.color = 0xffffff;
+			this.inventory = [];
+			this.inventorySize = 0;
+			this.heightSizeOffset = 0.5;
+			this.size = 2;
+			this.remove = false;
+			Object.keys(properties).forEach((key) => {
+				this[key] = JSON.parse(JSON.stringify(properties[key]));
+			});
 		}
 
-		static normalizeDirection(facing) {
-			const fixedFacing = facing % DIRECTIONS.length;
-			return (fixedFacing < 0) ? (DIRECTIONS.length + fixedFacing) : fixedFacing;
+		/* eslint-disable no-param-reassign */
+		static setX(entity, x) { entity.coords[X$2] = x; }
+
+		static setY(entity, y) { entity.coords[Y$2] = y; }
+
+		static setZ(entity, z) { entity.coords[Z$2] = z; }
+		/* eslint-enable no-param-reassign */
+
+		setX(x) { this.coords[X$2] = x; }
+
+		setY(y) { this.coords[Y$2] = y; }
+
+		setZ(z) { this.coords[Z$2] = z; }
+
+		getCoords() {
+			return [...this.coords];
 		}
 
-		static getDirectionName(facingParam) {
-			const facing = ArrayCoords.normalizeDirection(facingParam);
-			return DIRECTION_NAMES[facing];
+		setGrounded(grounded, h) {
+			this.grounded = grounded;
+			if (typeof h === 'number' && grounded) this.setZ(h);
 		}
 
-		static getDirectionRadians(facingParam) {
-			const facing = ArrayCoords.normalizeDirection(facingParam);
-			return RADIANS[facing];
+		moveTo(coords) {
+			const [x, y, z] = coords;
+			if (typeof x === 'number') this.coords[0] = x;
+			if (typeof y === 'number') this.coords[1] = y;
+			if (typeof z === 'number') this.coords[2] = z;
 		}
 
-		static getDistance(coords1, coords2) {
-			return Math.sqrt(
-				(coords2[X$2] - coords1[X$2]) ** 2
-				+ (coords2[Y$2] - coords1[Y$2]) ** 2
-				+ (coords2[Z$2] - coords1[Z$2]) ** 2,
-			);
+		move(relativeCoords = []) {
+			this.moveTo(ArrayCoords.add(this.coords, relativeCoords));
 		}
 
-		static checkEqual(coords1, coords2) {
-			return (coords1[X$2] === coords2[X$2] && coords1[Y$2] === coords2[Y$2] && coords1[Z$2] === coords2[Z$2]);
+		turn(relativeRadians = 0) {
+			this.facing += relativeRadians;
 		}
 
-		static subtract(coords1, coords2) {
-			return [coords1[X$2] - coords2[X$2], coords1[Y$2] - coords2[Y$2], coords1[Z$2] - coords2[Z$2]];
+		getTags() {
+			return this.tags;
 		}
 
-		static add(coords1, coords2) {
-			return [coords1[X$2] + coords2[X$2], coords1[Y$2] + coords2[Y$2], coords1[Z$2] + coords2[Z$2]];
+		hasTag(tag) {
+			const entityTags = this.getTags();
+			return entityTags.includes(tag);
 		}
-	}
 
-	// Indices
-	ArrayCoords.X = X$2;
-	ArrayCoords.Y = Y$2;
-	ArrayCoords.Z = Z$2;
-	ArrayCoords.NORTH = NORTH;
-	ArrayCoords.EAST = EAST;
-	ArrayCoords.SOUTH = SOUTH;
-	ArrayCoords.WEST = WEST;
-	ArrayCoords.DIRECTIONS = DIRECTIONS;
+		hasOneOfTags(tags = []) {
+			const entityTags = this.getTags();
+			const matchingTags = entityTags.filter((tag) => tags.includes(tag));
+			return (matchingTags.length > 0);
+		}
 
-	// eslint-disable-next-line no-nested-ternary
-	const clamp = (v, min = 0, max = 1) => (v < min ? min : v > max ? max : v);
-
-	const MAGIC_NUMBER = 10000;
-	const SEED_MAGIC_INT = 9999999;
-	const SEED_MAGIC_BOOL_TRUE = 93759;
-	const SEED_MAGIC_BOOL_FALSE = 1012638;
-	const RADIX$1 = 36;
-
-	class PseudoRandomizer {
-		constructor(seed) {
-			if (typeof seed === 'number') {
-				this.seed = seed;
-			} else if (seed instanceof Array) {
-				this.seed = PseudoRandomizer.makeSeed(seed);
-			} else {
-				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
+		addToInventory(thing) {
+			const itemsInInv = this.inventory.filter((item) => item);
+			if (itemsInInv.length < this.inventorySize) {
+				this.inventory.push(thing);
+				return true;
 			}
-			if (Number.isNaN(this.seed)) {
-				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
-			}
-			this.initialSeed = this.seed;
+			return false;
 		}
 
-		static convertStringToRadixSafeString(str = '') {
-			return String(str).split('').map((char) => {
-				const int = parseInt(char, RADIX$1);
-				return (Number.isNaN(int)) ? char.charCodeAt(0).toString(RADIX$1) : char;
-			}).join('');
+		applyForce(force = []) {
+			if (!this.mass) return;
+			const accDueToForce = ArrayCoords.multiply(force, (1 / this.mass));
+			this.acc = ArrayCoords.add(this.acc, accDueToForce);
+			// if (this.isCharacter) console.log(JSON.stringify(this.acc));
 		}
 
-		static convertStringToNumber(str = '') {
-			return parseInt(PseudoRandomizer.convertStringToRadixSafeString(str), RADIX$1);
+		applyMovementForce(force = 0, direction = 0) {
+			const angleOfForce = (this.facing + direction); // not sure why we need to negate this
+			const directedForce = [
+				force * Math.sin(angleOfForce),
+				force * Math.cos(angleOfForce),
+				0,
+			];
+			this.applyForce(directedForce);
+			this.movementForce = force;
 		}
 
-		static makeSeed(arr = []) {
-			const seed = arr.reduce((sum, value) => {
-				const typeOfValue = typeof value;
-				let num = 1;
-				if (typeOfValue === 'number') {
-					num = value;
-				} else if (typeOfValue === 'object') {
-					num = parseInt(JSON.stringify(value), RADIX$1);
-				} else if (typeOfValue === 'string') {
-					num = parseInt(value, RADIX$1);
-				} else if (typeOfValue === 'boolean') {
-					num = (value ? SEED_MAGIC_BOOL_TRUE : SEED_MAGIC_BOOL_FALSE);
-				}
-				return PseudoRandomizer.getPseudoRandInt(sum, SEED_MAGIC_INT) + num;
-			}, 0);
-			return seed;
+		updatePhysics(t, options = {}) {
+			if (!this.physics) return 0;
+			const seconds = t / 1000;
+			const {
+				gravity = [0, 0, -4],
+				groundFriction = 0.95,
+				airFriction = 0.9999,
+				accelerationDecay = 0.9,
+			} = options;
+			// Velocity
+			const deltaVel = ArrayCoords.multiply(this.acc, seconds);
+			this.vel = ArrayCoords.add(this.vel, deltaVel);
+			if (!this.grounded) this.vel = ArrayCoords.add(this.vel, gravity);
+			this.vel = ArrayCoords.clampEachCoord(this.vel, -this.maxVelocity, this.maxVelocity);
+			const deltaPos = ArrayCoords.multiply(this.vel, seconds);
+			this.coords = ArrayCoords.add(this.coords, deltaPos);
+			// Acceleration due to force is only momentary
+			// this.acc = [0, 0, 0];
+			/// ...but let's try to make it last a little longer?
+			this.acc = ArrayCoords.multiply(this.acc, accelerationDecay);
+			// Friction
+			let friction = (this.grounded) ? groundFriction : airFriction;
+			if (this.movementForce) friction = 1; // no friction if moving/walking
+			this.vel = ArrayCoords.multiply(this.vel, friction);
+			this.vel = [
+				(Math.abs(this.vel[X$2]) < 0.001) ? 0 : this.vel[X$2],
+				(Math.abs(this.vel[Y$2]) < 0.001) ? 0 : this.vel[Y$2],
+				(Math.abs(this.vel[Z$2]) < 0.001) ? 0 : this.vel[Z$2],
+			];
+			this.movementForce = 0;
 		}
 
-		static getPseudoRand(seed) {
-			// http://stackoverflow.com/a/19303725/1766230
-			const x = Math.sin(seed) * MAGIC_NUMBER;
-			return x - Math.floor(x);
-		}
-
-		static getPseudoRandInt(seed, n) {
-			const r = PseudoRandomizer.getPseudoRand(seed);
-			return Math.floor(r * n);
-		}
-
-		makeArray(length = 1) {
-			const arr = [];
-			for (let i = 0; i < length; i += 1) {
-				arr.push(this.random());
-			}
-			return arr;
-		}
-
-		random(n) {
-			this.seed += 1;
-			const r = PseudoRandomizer.getPseudoRand(this.seed);
-			if (typeof n === 'number') return Math.floor(r * n);
-			return r;
-		}
-
-		getSeedString() {
-			return this.seed.toString(RADIX$1);
-		}
-
-		reset() {
-			this.seed = this.initialSeed;
-		}
-	}
-
-	const MAGIC = 999999;
-	const RADIX = 36;
-
-	class Random {
-		constructor(n = 1) {
-			this.n = Math.random() * n;
-		}
-
-		get() {
-			return this.n;
-		}
-
-		static get() {
-			return Math.random();
-		}
-
-		static randomInt(n = 0) {
-			return Math.floor(Math.random() * n);
-		}
-
-		static pickRandom(arr = []) {
-			return arr[Random.randomInt(arr.length)];
-		}
-
-		static randomString(n = MAGIC) {
-			return Math.round(Math.random() * n).toString(RADIX);
-		}
-
-		static uniqueString() {
-			return Number(new Date()).toString(RADIX) + Random.randomString();
-		}
-
-		// alias
-		static pick(arr = []) {
-			return arr[Random.randomInt(arr.length)];
-		}
-
-		/**
-		 * Chance of random event based on 0-1 odds
-		 * @param {Number} odds - float 0-1 for chance of true
-		 * @returns Boolean
-		 */
-		static chance(odds = 0) {
-			return Math.random() > odds;
+		update(t) {
+			// this.updateTimers(t);
+			this.updatePhysics(t);
 		}
 	}
 
@@ -31451,12 +31843,21 @@
 		}
 	}
 
+	/* eslint-disable class-methods-use-this */
+
+	const { PI: PI$1 } = Math;
+	const TAU$1 = PI$1 * 2;
+	const HALF_PI$1 = PI$1 / 2;
+	const MAX_ACTORS = 5000;
+
 	class GenericGame extends StateCommander {
 		constructor(options = {}) {
 			const {
 				SceneClass, // required
-				ActorClass, // required
 				WorldClass, // required
+				InterfaceClass, // required
+				ActorClass = Entity, // recommended
+				ItemClass = Entity, // recommended
 				states, // recommended
 				minMouseWheel = -100,
 				maxMouseWheel = 100,
@@ -31468,10 +31869,49 @@
 			this.mouseWheelWatcher = new MouseWheelWatcher({ min: minMouseWheel, max: maxMouseWheel });
 			this.gameScene = new SceneClass();
 			this.world = new WorldClass();
+			this.interface = new InterfaceClass();
 			this.ActorClass = ActorClass;
+			this.ItemClass = ItemClass;
 			this.players = [];
 			this.spirits = [];
 			this.actors = [];
+			this.items = [];
+			this.tick = 0;
+		}
+
+		render(renderData = {}, t = 5) {
+			const {
+				sceneUpdateOptions = {},
+				interfaceUpdates = {},
+			} = renderData;
+			this.interface.render(interfaceUpdates);
+			// Send updates to the scene
+			this.gameScene.update(sceneUpdateOptions, t).render();
+		}
+
+		gameTick() { // You should overwrite this method
+			this.tick += 1;
+			if (this.tick > 1000000) this.tick = 0;
+			return {};
+		}
+
+		assembleRenderData(gameTickData = {}) { // You should overwrite this method
+			return {
+				...gameTickData,
+			};
+		}
+
+		animationTick(deltaT) {
+			// Clamp the value to 100 ms so that it doesn't go overboard if the
+			// animation doesn't run in a long time
+			const t = clamp$2(deltaT, 0, 100);
+			const gameTickData = this.gameTick(t);
+			const renderData = this.assembleRenderData(gameTickData);
+			this.render(renderData, t);
+		}
+
+		startAnimationGameLoop() {
+			this.loop.set((t) => this.animationTick(t)).start();
 		}
 
 		makePlayer() {
@@ -31502,7 +31942,85 @@
 			this.actors.push(character);
 			return character;
 		}
+
+		makeActor(opt = {}) {
+			return (new this.ActorClass(opt));
+		}
+
+		addNewActor(opt) {
+			if (this.actors.length >= MAX_ACTORS) return null;
+			const actor = this.makeActor(opt);
+			this.actors.push(actor);
+			return actor;
+		}
+
+		makeItem(itemData = {}) {
+			const item = new this.ItemClass(itemData);
+			if (item.randomAtRadius) {
+				const angle = Random.randomAngle();
+				const [x, y] = ArrayCoords.polarToCartesian(Number(item.randomAtRadius), angle);
+				item.coords = [x, y, 0];
+			}
+			return item;
+		}
+
+		addNewItem(itemData = {}) {
+			const item = this.makeItem(itemData);
+			this.items.push(item);
+			return item;
+		}
+
+		/** Returns an array of (0) the distance to the nearest thing, and (1) the thing */
+		static findNearest(arr, coords, filterFn) {
+			return arr.reduce((previousValue, thing) => {
+				// if there's a filter function defined, then use it to
+				// skip considering certain things
+				if (filterFn && !filterFn(thing)) return previousValue;
+				const [nearestSoFar] = previousValue;
+				const distance = ArrayCoords.getDistance(thing.coords, coords);
+				return (distance < nearestSoFar) ? [distance, thing] : previousValue;
+			}, [Infinity, null]);
+		}
+
+		findNearestActor(coords) {
+			return GenericGame.findNearest(this.actors, coords);
+		}
+
+		findNearestItem(coords) {
+			return GenericGame.findNearest(this.items, coords);
+		}
+
+		/** Find all items that are interactable (not necessary within range though) */
+		findNearestInteractableItem(coords) {
+			return GenericGame.findNearest(this.items, coords, this.ItemClass.isItemInteractable);
+		}
+
+		/** Find all items that are interactable (not necessary within range though) */
+		findNearestInRangeInteractableItem(coords) {
+			const filter = (item) => this.ItemClass.isItemInRangeInteractable(item, coords);
+			// TODO: this could be made more efficient since we're checking distance twice
+			// (once in isItemInRangeInteractable, once in findNearest)
+			return GenericGame.findNearest(this.items, coords, filter);
+		}
+
+		static cleanRemoved(arr) {
+			for (let i = arr.length - 1; i >= 0; i -= 1) {
+				if (arr[i].remove) arr.splice(i, 1);
+			}
+		}
+
+		cleanItems() {
+			GenericGame.cleanRemoved(this.items);
+		}
+
+		cleanActors() {
+			GenericGame.cleanRemoved(this.actors);
+		}
 	}
+
+	GenericGame.PI = PI$1;
+	GenericGame.TAU = TAU$1;
+	GenericGame.HALF_PI = HALF_PI$1;
 
 	/* eslint-disable no-bitwise, no-param-reassign */
 	/*
@@ -31878,20 +32396,34 @@
 			});
 		}
 
+		static calcNoiseHeight(x, y, noiseScale, altitudeScale = 1) {
+			return altitudeScale * noise.perlin2(noiseScale * x, noiseScale * y);
+		}
+
 		calcTerrainHeight(x, y) {
 			const noiseScale = 0.002;
+			// const noiseScale = 0.0002;
 			const minHeight = 0;
-			const maxHeight = 500;
-			const delta = maxHeight - minHeight;
-			const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
-			let h = clamp(minHeight + (delta * noiseValue), 0, maxHeight);
-			// Add this just to make the terrain more pronounced for testing
-			// if (x < 0) {
-			// 	if (y < 0) h = 100;
-			// 	else h = 0;
-			// }
-			// Alternative
-			// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+			const maxHeight = 1000;
+			// const delta = maxHeight - minHeight;
+			let h = 100;
+			// Add big heights
+			h += DinoWorld.calcNoiseHeight(x, y, 0.0002, 800);
+			h = clamp$2(h, minHeight, maxHeight);
+			// Pokey mountains
+			h += DinoWorld.calcNoiseHeight(x, y, 0.002, 600);
+			// const roll = DinoWorld.calcNoiseHeight(x, y, 0.00015, 1);
+			// if (roll)
+			h = clamp$2(h, minHeight, maxHeight);
+
+			// Add roughness
+			const roughness = (h <= 2) ? 20 : 50 * (h / maxHeight);
+			h += DinoWorld.calcNoiseHeight(x, y, 0.02, roughness);
+
+			// Add ripples (negative for erosion)
+			h -= 20 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+			h = clamp$2(h, minHeight, maxHeight);
+			// h += DinoWorld.calcNoiseHeight(x, y, 0.00021, 200);
 			// this.validateNumbers({ h, h2 });
 			return h;
 		}
@@ -32032,67 +32564,257 @@
 		}
 	}
 
-	class Entity {
-		constructor() {
-			this.entityId = Random.uniqueString();
-			this.isEntity = true;
-			this.coords = [0, 0, 0];
-			this.facing = 0; // radians
-			this.tags = [];
-			this.renderAs = 'box';
-			this.color = 0xffffff;
-		}
-
-		getCoords() {
-			return [...this.coords];
-		}
-
-		setX(x) { this.coords[ArrayCoords.X] = x; }
-
-		setY(y) { this.coords[ArrayCoords.Y] = y; }
-
-		setZ(z) { this.coords[ArrayCoords.Z] = z; }
-
-		moveTo(coords) {
-			const [x, y, z] = coords;
-			if (typeof x === 'number') this.coords[0] = x;
-			if (typeof y === 'number') this.coords[1] = y;
-			if (typeof z === 'number') this.coords[2] = z;
-		}
-
-		move(relativeCoords = []) {
-			this.moveTo(ArrayCoords.add(this.coords, relativeCoords));
-		}
-
-		turn(relativeRadians = 0) {
-			this.facing += relativeRadians;
-		}
-
-		getTags() {
-			return this.tags;
-		}
-
-		hasTag(tag) {
-			const blobTags = this.getTags();
-			return blobTags.includes(tag);
-		}
-
-		hasOneOfTags(tags = []) {
-			const blobTags = this.getTags();
-			const matchingTags = blobTags.filter((tag) => tags.includes(tag));
-			return (matchingTags.length > 0);
-		}
-	}
-
 	class Actor extends Entity {
 		constructor(options = {}) {
 			super(options);
+			this.alive = true;
+			this.mobile = true;
+			this.physics = true;
+			this.mass = 60; // kg
+			this.emotions = [];
 			this.spiritId = options.spiritId;
 			this.isActor = true;
+			this.moveTarget = [0, 0, 0];
+			this.cooldowns = {
+				planning: 0,
+				//
+			};
+			this.walkForce = this.walkForce || 1000;
+		}
+
+		jump() {
+			if (!this.grounded) return;
+			this.applyForce([0, 0, 140000]);
+		}
+
+		walk(directionOffset = 0) {
+			// it feels good to walk in the air (a little bit at least)
+			const m = (this.grounded) ? 1 : 0.2;
+			this.applyMovementForce(this.walkForce * m, directionOffset);
+		}
+
+		heatUp(name, seconds) {
+			this.cooldowns[name] = seconds;
+		}
+
+		coolDown(name, seconds = 0) {
+			if (this.cooldowns[name] > 0) this.cooldowns[name] -= seconds;
+			if (this.cooldowns[name] < 0) this.cooldowns[name] = 0;
+		}
+
+		updateTimers(t) {
+			const seconds = t / 1000;
+			['planning'].forEach((cdName) => {
+				this.coolDown(cdName, seconds);
+			});
+		}
+
+		updateEmotions() {
+
+		}
+
+		updateLook() {
+			if (!this.autonomous) return 0;
+		}
+
+		updatePlan() {
+			if (!this.autonomous) return 0;
+			if (this.cooldowns.planning) return 0;
+			if (this.wandering) {
+				const deltaX = Random.randomInt(100) - Random.randomInt(100);
+				const deltaY = Random.randomInt(100) - Random.randomInt(100);
+				this.moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
+				this.heatUp('planning', 10);
+				// console.log(this.name, 'planning a wander');
+			}
+		}
+
+		updateMovement() {
+			if (!this.mobile || !this.autonomous) return 0;
+			const CLOSE_ENOUGH = 1;
+			const distanceToTarget = ArrayCoords.getDistance(this.coords, this.moveTarget);
+			if (distanceToTarget < CLOSE_ENOUGH) return 0;
+			this.facing = ArrayCoords.getAngleFacing(this.coords, this.moveTarget);
+			this.walk();
+		}
+
+		update(t, world) {
+			this.updateTimers(t);
+			this.updateEmotions(t);
+			this.updateLook(t);
+			this.updatePlan(t);
+			this.updateMovement(t);
+			this.updatePhysics(t);
 		}
 	}
 
-	// import * as THREE from 'three';
+	class DinoItem extends Entity {
+		constructor(properties = {}) {
+			super(properties);
+			this.interactionProgress = 0;
+		}
+
+		static isItemInteractable(item) {
+			return Boolean(
+				item.interactionRange && item.interactionAction && item.interactionResult,
+			);
+		}
+
+		static isItemInRangeInteractable(item, coords) {
+			if (!DinoItem.isItemInteractable(item)) return false;
+			const distance = ArrayCoords.getDistance(item.coords, coords);
+			return (distance <= item.interactionRange);
+		}
+
+		static interact(item, who, amount) {
+			if (!item) return 0;
+			return item.interact(who, amount);
+		}
+
+		getInteractionPercent() {
+			if (!this.interactionEffort) return 1;
+			return clamp$2(this.interactionProgress / this.interactionEffort);
+		}
+
+		interact(who, amount = 0) {
+			if (!DinoItem.isItemInRangeInteractable(this, who.coords)) return 0;
+			if (this.interactionEffort) {
+				this.interactionProgress += amount;
+				const percent = this.getInteractionPercent();
+				if (percent < 1) return percent;
+			}
+			// either no effort is needed, or we're done with the progress
+			if (!this.interactionResult) {
+				console.warn('No interaction result for item');
+				return 1;
+			}
+			Object.keys(this.interactionResult).forEach((resultKey) => {
+				if (resultKey === 'modify') {
+					const { modify } = this.interactionResult;
+					Object.keys(modify).forEach((propName) => {
+						this[propName] = modify[propName];
+					});
+				} else if (resultKey === 'pickUp' && this.interactionResult.pickUp) {
+					const added = who.addToInventory(this);
+					this.remove = added;
+				}
+				// else -- things like spawning something, damage, effects
+			});
+			return 1;
+		}
+	}
+
+	const $ = (selector) => {
+		const elt = window.document.querySelector(selector);
+		if (!elt) console.warn('Could not find', selector);
+		return elt;
+	};
+
+	const SHOW_CLASS = 'ui-show';
+	const HIDE_CLASS = 'ui-hide';
+
+	class DinoInterface {
+		// constructor() {
+		// 	//
+		// }
+
+		static setText(selector, text) {
+			const elt = $(selector);
+			if (elt.innerText === text) return;
+			elt.innerText = text;
+		}
+
+		static setHtml(selector, html) {
+			const elt = $(selector);
+			if (elt.innerHTML === html) return;
+			elt.innerHTML = html;
+		}
+
+		static show(selector) {
+			const elt = $(selector);
+			elt.classList.remove(HIDE_CLASS);
+			elt.classList.add(SHOW_CLASS);
+		}
+
+		static hide(selector) {
+			const elt = $(selector);
+			elt.classList.remove(SHOW_CLASS);
+			elt.classList.add(HIDE_CLASS);
+		}
+
+		updateInteraction(item) {
+			if (!item) {
+				DinoInterface.hide('#interaction-details');
+				return;
+			}
+			DinoInterface.show('#interaction-details');
+			DinoInterface.setText('#interaction-target', item.name || 'Item');
+			let actionText = item.interactionAction || 'Interact';
+			const percent = item.getInteractionPercent();
+			if (percent < 1) actionText += ` ${Math.floor(percent * 100)}%`;
+			DinoInterface.setText('#interaction-action-name', actionText);
+		}
+
+		updateDebug(actor) {
+			const html = `
+			Vel: ${actor.vel.join('<br>')}<br>
+			Pos: ${actor.coords.join('<br>')}<br>
+			Grounded: ${actor.grounded}
+		`;
+			DinoInterface.setHtml('#debug', html);
+		}
+
+		render(interfaceUpdates = {}) {
+			const { item, actor } = interfaceUpdates;
+			this.updateDebug(actor);
+			this.updateInteraction(item);
+		}
+	}
+
+	const PART_SIZE = 20;
+	const PART = {
+		name: 'Time travel machine part',
+		randomAtRadius: 100,
+		size: PART_SIZE,
+		rooted: true,
+		interactionRange: PART_SIZE + 20,
+		interactionAction: 'Dig',
+		interactionEffort: 6,
+		heightSizeOffset: 0,
+		interactionResult: {
+			modify: {
+				heightSizeOffset: 0.5,
+				rooted: false,
+				// collectible: true,
+				interactionAction: 'Pick up',
+				interactionEffort: 0,
+				interactionResult: { pickUp: true },
+			},
+		},
+	};
+	const PARTS = [
+		{ ...PART, randomAtRadius: 100, color: [1, 0.5, 0.5] },
+		{ ...PART, randomAtRadius: 200, color: [1, 1, 0] },
+		{ ...PART, randomAtRadius: 300, color: [1, 1, 1] },
+		{ ...PART, randomAtRadius: 400, color: [0, 1, 1] },
+		{ ...PART, randomAtRadius: 500, color: [0, 0, 1] },
+		{ ...PART, randomAtRadius: 600, color: [0, 1, 0] },
+		{ ...PART, randomAtRadius: 700, color: [1, 0, 1] },
+	];
+	// Powers:
+	// - GPS Gravitation-wave Positioning System -- provides x,y,z coordinates
+	// - Compass --- provides N, S, E, W compass
+	// - Scanner --- provides some way to detect parts
+	// - threat monitor --- beeps when a creature neatby is aggro'd
+	// - rocket boots --- big jumps
+	// - Chrono-collector --- collects time resource
+	// - time-stopper --- drops a bubble that stops everyone but character in a radius
+	// - ranged time-stopper --- time bubble near where it's fired
+	// - overhead camera --- provides a map view
+	// - scanning visor --- provides a wireframe view with things highlighted
+	// - drone --- provides a mobile viewing system
+	// - laser gun
+
 	const { X, Y, Z } = ArrayCoords;
 
 	const { PI } = Math;
@@ -32114,16 +32836,18 @@
 				s: 'move back',
 				a: 'move left',
 				d: 'move right',
-				q: 'turn left',
-				e: 'turn right',
-			}
+				z: 'turn left',
+				x: 'turn right',
+				e: 'interact nearest',
+				' ': 'jump',
+			},
 		},
 		inventory: {},
 		dead: {},
 	};
 
 	class DinoGame extends GenericGame {
-		constructor(options) {
+		constructor() {
 			super({
 				states,
 				minMouseWheel: 0,
@@ -32131,10 +32855,19 @@
 				SceneClass: DinoScene,
 				ActorClass: Actor,
 				WorldClass: DinoWorld,
+				ItemClass: DinoItem,
+				InterfaceClass: DinoInterface,
 			});
 			this.pointerLocker = new PointerLocker();
 			this.cameraPosition = [0, 0, 0];
 			this.cameraVerticalRotation = HALF_PI;
+			// How spaced-out do you want the spawned actors
+			this.spawnActorDistance = 900;
+			// Min spawn distance should be greater than the sight view of enemies so that they
+			// don't spawn and instantly attack.
+			// Max spawn distance should be somwhat similar to half the size of all the chunks being shown
+			this.spawnRadii = [this.spawnActorDistance, 3500];
+			this.despawnRadius = this.spawnRadii[1] * 1.5;
 		}
 
 		handleCommand(command) {
@@ -32142,52 +32875,148 @@
 			const commandWords = command.split(' ');
 			const firstCommand = commandWords[0];
 			if (firstCommand === 'move') {
-				let spd = 10;
-				let angleOfMovement = mainCharacter.facing; // forward
+				// const spd = 10;
+				// Figure out the relative angle
+				let angleOfMovement = 0;
 				if (commandWords[1] === 'forward') ;
 				else if (commandWords[1] === 'back') angleOfMovement += PI;
 				else if (commandWords[1] === 'left') angleOfMovement -= HALF_PI;
 				else if (commandWords[1] === 'right') angleOfMovement += HALF_PI;
-				const x = spd * Math.sin(angleOfMovement);
-				const y = spd * Math.cos(angleOfMovement);
-				mainCharacter.move([x, y, 0]);
+				mainCharacter.walk(angleOfMovement);
+				// const x = spd * Math.sin(angleOfMovement);
+				// const y = spd * Math.cos(angleOfMovement);
+				// mainCharacter.move([x, y, 0]);
 				// this.cameraCoords.position
 			} else if (firstCommand === 'turn') {
 				let turnAmount = TAU / 50;
 				if (commandWords[1] === 'left') turnAmount *= -1;
 				mainCharacter.turn(turnAmount);
+			} else if (firstCommand === 'interact') {
+				if (commandWords[1] === 'nearest') {
+					const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
+					if (!iItem) return;
+					this.ItemClass.interact(iItem, mainCharacter, 1);
+					this.setHeightToTerrain(iItem, this.world);
+				}
+			} else if (firstCommand === 'jump') {
+				mainCharacter.jump();
 			}
 		}
 
-		applyPhysics(actor, world) {
-			const h = world.getTerrainHeight(actor.coords[X], actor.coords[Y]);
-			actor.setZ(h);
+		setHeightToTerrain(entity, world) {
+			const [x, y, z] = entity.coords;
+			let h = world.getTerrainHeight(x, y);
+			h += (entity.heightSizeOffset * entity.size);
+			const grounded = (z <= h);
+			entity.setGrounded(grounded, h);
 		}
 
-		animationTick(t) {
-			const { mainCharacter, actors } = this;
+		gameTick(t) {
+			super.gameTick(t);
+			if (this.tick % 300 === 0) {
+				this.addNewDino();
+			}
+			// Clean items and actors to remove missing/dead
+			this.removeLostActors();
+			this.cleanItems();
+			this.cleanActors();
+
+			// Handle camera position
 			const zoom = this.mouseWheelWatcher.percent * 100;
 			this.mouseWheelWatcher.update();
-			this.cameraPosition[Z] = 50 + (zoom ** 2);
+			this.cameraPosition[Z] = 35 + (zoom ** 2);
 			// this.cameraPosition[Y] = -100 - zoom;
-			const [x, y, z] = mainCharacter.coords;
+
+			// Generate terrain
+			const { mainCharacter, actors } = this;
 			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
-			actors.forEach((actor) => this.applyPhysics(actor, this.world));
-			this.gameScene.update({
+			// Update actors
+			actors.forEach((actor) => actor.update(t, this.world));
+			actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
+			return { terrainChunks };
+		}
+
+		assembleRenderData(gameTickData = {}) { // You should overwrite this method
+			const { terrainChunks } = gameTickData;
+			// Assemble data needed to render
+			const {
+				cameraPosition,
+				cameraVerticalRotation,
+				mainCharacter,
+				actors,
+				items,
+			} = this;
+			const [x, y, z] = mainCharacter.coords;
+			const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
+			const sceneUpdateOptions = {
 				terrainChunks,
 				// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
-				cameraPosition: this.cameraPosition,
-				cameraRotationGoalArray: [this.cameraVerticalRotation, 0, -mainCharacter.facing],
+				cameraPosition,
+				cameraRotationGoalArray: [cameraVerticalRotation, 0, -mainCharacter.facing],
 				worldCoords: [-x, -y, -z],
-				entities: [...actors],
-				clearColor: [.5, .75, 1],
-			}, t).render();
+				entities: [...actors, ...items],
+				clearColor: [0.5, 0.75, 1],
+			};
+			const interfaceUpdates = {
+				actor: mainCharacter,
+				item: iItem,
+			};
+			return {
+				sceneUpdateOptions,
+				interfaceUpdates,
+			};
+		}
+
+		removeLostActors() {
+			this.actors.forEach((actor) => {
+				if (actor.isCharacter || actor.important) return;
+				const distance = ArrayCoords.getDistance(this.mainCharacter.coords, actor.coords);
+				if (distance > this.despawnRadius) actor.remove = true;
+			});
+		}
+
+		addNewDino() {
+			const [minRadius, maxRadius] = this.spawnRadii;
+			const r = minRadius + Random.randomInt(maxRadius - minRadius);
+			const angle = Random.randomAngle();
+			const [x, y] = ArrayCoords.polarToCartesian(r, angle);
+			const coords = ArrayCoords.add(this.mainCharacter.coords, [x, y, 0]);
+			const [distance] = this.findNearestActor(coords);
+			if (distance < this.spawnActorDistance) return null;
+			const randColor = () => (0.5 + (Random.random() * 0.5));
+			const dinoOpt = {
+				name: 'Dino',
+				autonomous: true,
+				isDinosaur: true,
+				wandering: true,
+				size: 60,
+				color: [randColor(), randColor(), randColor()],
+				renderAs: 'sphere',
+			};
+			const dino = this.addNewActor(dinoOpt);
+			dino.coords = coords;
+			console.log('Added dino', dino);
+			return dino;
+		}
+
+		buildWorld() {
+			PARTS.forEach((partData) => {
+				this.addNewItem(partData);
+			});
+			this.items.forEach((item) => {
+				if (item.rooted) {
+					this.setHeightToTerrain(item, this.world);
+				}
+			});
 		}
 
 		async start() {
 			const { spirit } = this.addNewPlayer();
 			this.mainCharacter = this.addNewCharacter(spirit);
+			this.mainCharacter.inventorySize = 10;
 			this.mainCharacter.coords = [0, 0, 0];
+			this.mainCharacter.walkForce = 12000;
+			this.buildWorld();
 			// this.transition('home');
 			// this.transition('intro');
 			this.transition('explore');
@@ -32204,7 +33033,7 @@
 			// gameScene.addBox();
 			// gameScene.addBox();
 			// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
-			this.loop.set((t) => this.animationTick(t)).start();
+			this.startAnimationGameLoop();
 		}
 	}
 

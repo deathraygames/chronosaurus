@@ -149,6 +149,11 @@ class DinoScene {
 		console.log('removing object', entityId, uuid);
 	}
 
+	static makeColor(colorParam) {
+		return (colorParam instanceof Array)
+			? new THREE.Color(...colorParam) : new THREE.Color(colorParam);
+	}
+
 	update(options = {}, t = 5) { // time `t` is in milliseconds
 		// console.log(t);
 		const {
@@ -156,8 +161,7 @@ class DinoScene {
 			clearColor,
 		} = options;
 		if (clearColor && clearColor !== this.clearColor) {
-			this.clearColor = (clearColor instanceof Array)
-				? new THREE.Color(...clearColor) : new THREE.Color(clearColor);
+			this.clearColor = DinoScene.makeColor(clearColor);
 			this.renderer.setClearColor(this.clearColor);
 		}
 		if (cameraPosition || cameraRotationGoalArray) {
@@ -173,14 +177,24 @@ class DinoScene {
 			this.worldGroup.position.copy(DinoScene.convertCoordsToVector3(worldCoords));
 		}
 		if (entities) {
+			const visibleEntityUuids = [];
 			entities.forEach((entity) => {
-				const sceneObj = this.entitySceneObjects[entity.entityId];
+				let sceneObj = this.entitySceneObjects[entity.entityId];
 				if (sceneObj) {
 					sceneObj.position.copy(DinoScene.convertCoordsToVector3(entity.coords));
 					sceneObj.rotation.set(0, 0, -entity.facing);
 					// TODO: see if position or anything else has changed
 				} else {
-					this.addNewWorldEntity(entity);
+					sceneObj = this.addNewWorldEntity(entity);
+					if (!sceneObj) console.warn('Could not add entity to scene', entity);
+				}
+				visibleEntityUuids.push(sceneObj.uuid);
+			});
+			// Loop over all world objects and remove any not visible
+			this.worldGroup.children.forEach((terrainChild) => {
+				if (terrainChild.isGroup) return;
+				if (!visibleEntityUuids.includes(terrainChild.uuid)) {
+					this.removeObject(terrainChild);
 				}
 			});
 		}
@@ -292,7 +306,7 @@ class DinoScene {
 			color = 0x55ffbb,
 		} = terrainChunk;
 		// const segments = 8;
-		console.log(segments);
+		// console.log(segments);
 		const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
 
 		// Option 1 -- a heightmap -- but it appears to be blank
@@ -326,6 +340,7 @@ class DinoScene {
 			// displacementMap: heightMap,
 			// displacementScale: 500,
 			flatShading: true,
+			// receiveShadow: true,
 		});
 
 		// create the mesh for the terrain
@@ -351,11 +366,35 @@ class DinoScene {
 		return terrain;
 	}
 
+	makeEntityMaterial(entity, color, texture) {
+		const materialOptions = {};
+		if (color) materialOptions.color = color;
+		if (entity.texture) materialOptions.map = texture;
+		const material = new THREE.MeshStandardMaterial(materialOptions);
+		return material;
+	}
+
 	addNewWorldEntity(entity) {
-		const box = this.makeBox();
-		box.position.copy(this.convertCoordsToVector3(entity.coords));
-		this.worldGroup.add(box);
-		this.entitySceneObjects[entity.entityId] = box;
+		if (!entity.renderAs) return null;
+		const { renderAs, size } = entity;
+		let texture; // get from entity.texture
+		let sceneObj; // mesh, plane, sprite, etc.
+		let color = (entity.color) ? DinoScene.makeColor(entity.color) : null;
+		if (renderAs === 'box') {
+			const geometry = new THREE.BoxGeometry(size, size, size);
+			const material = this.makeEntityMaterial(entity, color);
+			sceneObj = new THREE.Mesh(geometry, material);
+		} else if (renderAs === 'sphere') {
+			const geometry = new THREE.SphereGeometry(size, 16, 8);
+			const material = this.makeEntityMaterial(entity, color);
+			sceneObj = new THREE.Mesh(geometry, material);
+		}
+		// TODO: renderAs other types
+
+		sceneObj.position.copy(this.convertCoordsToVector3(entity.coords));
+		this.worldGroup.add(sceneObj);
+		this.entitySceneObjects[entity.entityId] = sceneObj;
+		return sceneObj;
 	}
 }
 

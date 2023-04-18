@@ -22,6 +22,7 @@ class PointerLocker extends Observer {
 			}
 			// console.log('Preventing default, then locking');
 			event.preventDefault();
+			event.stopPropagation();
 			await this.lock();
 		};
 		this.handleLockUnlock = async (event) => {
@@ -39,6 +40,7 @@ class PointerLocker extends Observer {
 			}
 			// console.log('Preventing default, then locking');
 			event.preventDefault();
+			event.stopPropagation();
 			await this.unlock();
 		};
 		this.doc = window.document;

@@ -33,20 +33,34 @@ class DinoWorld {
 		});
 	}
 
+	static calcNoiseHeight(x, y, noiseScale, altitudeScale = 1) {
+		return altitudeScale * noise.perlin2(noiseScale * x, noiseScale * y);
+	}
+
 	calcTerrainHeight(x, y) {
 		const noiseScale = 0.002;
+		// const noiseScale = 0.0002;
 		const minHeight = 0;
-		const maxHeight = 500;
-		const delta = maxHeight - minHeight;
-		const noiseValue = noise.perlin2(noiseScale * x, noiseScale * y);
-		let h = clamp(minHeight + (delta * noiseValue), 0, maxHeight);
-		// Add this just to make the terrain more pronounced for testing
-		// if (x < 0) {
-		// 	if (y < 0) h = 100;
-		// 	else h = 0;
-		// }
-		// Alternative
-		// const h2 = 50 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+		const maxHeight = 1000;
+		// const delta = maxHeight - minHeight;
+		let h = 100;
+		// Add big heights
+		h += DinoWorld.calcNoiseHeight(x, y, 0.0002, 800);
+		h = clamp(h, minHeight, maxHeight);
+		// Pokey mountains
+		h += DinoWorld.calcNoiseHeight(x, y, 0.002, 600);
+		// const roll = DinoWorld.calcNoiseHeight(x, y, 0.00015, 1);
+		// if (roll)
+		h = clamp(h, minHeight, maxHeight);
+
+		// Add roughness
+		const roughness = (h <= 2) ? 20 : 50 * (h / maxHeight);
+		h += DinoWorld.calcNoiseHeight(x, y, 0.02, roughness);
+
+		// Add ripples (negative for erosion)
+		h -= 20 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+		h = clamp(h, minHeight, maxHeight);
+		// h += DinoWorld.calcNoiseHeight(x, y, 0.00021, 200);
 		// this.validateNumbers({ h, h2 });
 		return h;
 	}
