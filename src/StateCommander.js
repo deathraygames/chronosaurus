@@ -44,28 +44,32 @@ class StateCommander extends Observer {
 		this.states[name] = stateObj;
 	}
 
-	startState(stateName = this.currentState) {
+	async startState(stateName = this.currentState) {
 		const s = this.getState(stateName);
 		if (!s) throw new Error(`No state (${stateName}) found`);
 		this.currentState = stateName;
 		this.kbCommander.setMapping(s.keyboardMapping || s.kbMapping || s.kb || {});
-		if (typeof s.stop === 'function') s.start();
+		if (typeof s.start === 'function') {
+			await s.start(this, stateName);
+		}
 		this.trigger('startState', stateName);
 	}
 
-	stopState(stateName = this.currentState) {
+	async stopState(stateName = this.currentState) {
 		if (stateName === null) return;
 		if (stateName === this.currentState) this.currentState = null;
 		else this.warn(`Stopping a state (${stateName}) that is not the current state.`);
-		const s = this.getState();
+		const s = this.getState(stateName);
 		if (!s) throw new Error(`No state (${stateName}) found`);
 		this.kbCommander.setMapping({});
-		if (typeof s.stop === 'function') s.stop();
+		if (typeof s.stop === 'function') {
+			await s.stop(this, stateName);
+		}
 		this.trigger('stopState', stateName);
 	}
 
-	transition(newStateName) {
-		this.stopState(this.currentState);
+	async transition(newStateName) {
+		await this.stopState(this.currentState);
 		if (!this.states[newStateName]) {
 			if (this.allowUndefinedStates) {
 				this.states[newStateName] = {};
@@ -73,7 +77,7 @@ class StateCommander extends Observer {
 				throw new Error(`Unknown state ${newStateName}`);
 			}
 		}
-		this.startState(newStateName);
+		await this.startState(newStateName);
 	}
 
 	handleCommand(command) {

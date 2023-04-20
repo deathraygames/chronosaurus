@@ -1,4 +1,4 @@
-import { ArrayCoords, Random } from 'rocket-utility-belt';
+import { ArrayCoords, Random, HALF_PI, PI, TAU } from 'rocket-utility-belt';
 
 import PointerLocker from './PointerLocker.js';
 import DinoScene from './DinoScene.js';
@@ -54,11 +54,15 @@ const PARTS = [
 
 const { X, Y, Z } = ArrayCoords;
 
-const { PI } = Math;
-const TAU = PI * 2;
-const HALF_PI = PI / 2;
-
 const states = {
+	loading: {
+		start: async (game) => {
+			await game.setup();
+		},
+		stop: (game) => {
+			game.interface.hideLoading();
+		},
+	},
 	home: {
 		keyboardMapping: {
 			Enter: 'start',
@@ -117,8 +121,8 @@ class DinoGame extends GenericGame {
 			let angleOfMovement = 0;
 			if (commandWords[1] === 'forward') {}
 			else if (commandWords[1] === 'back') angleOfMovement += PI;
-			else if (commandWords[1] === 'left') angleOfMovement -= HALF_PI;
-			else if (commandWords[1] === 'right') angleOfMovement += HALF_PI;
+			else if (commandWords[1] === 'left') angleOfMovement += HALF_PI;
+			else if (commandWords[1] === 'right') angleOfMovement -= HALF_PI;
 			mainCharacter.walk(angleOfMovement);
 			// const x = spd * Math.sin(angleOfMovement);
 			// const y = spd * Math.cos(angleOfMovement);
@@ -151,7 +155,7 @@ class DinoGame extends GenericGame {
 	gameTick(t) {
 		super.gameTick(t);
 		if (this.tick % 300 === 0) {
-			this.addNewDino();
+			// this.addNewDino();
 		}
 		// Clean items and actors to remove missing/dead
 		this.removeLostActors();
@@ -189,7 +193,7 @@ class DinoGame extends GenericGame {
 			terrainChunks,
 			// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
 			cameraPosition,
-			cameraRotationGoalArray: [cameraVerticalRotation, 0, -mainCharacter.facing],
+			cameraRotationGoalArray: [cameraVerticalRotation, 0, mainCharacter.facing - HALF_PI],
 			worldCoords: [-x, -y, -z],
 			entities: [...actors, ...items],
 			clearColor: [0.5, 0.75, 1],
@@ -209,7 +213,7 @@ class DinoGame extends GenericGame {
 			if (actor.isCharacter || actor.important) return;
 			const distance = ArrayCoords.getDistance(this.mainCharacter.coords, actor.coords);
 			if (distance > this.despawnRadius) actor.remove = true;
-		})
+		});
 	}
 
 	addNewDino() {
@@ -228,7 +232,12 @@ class DinoGame extends GenericGame {
 			wandering: true,
 			size: 60,
 			color: [randColor(), randColor(), randColor()],
-			renderAs: 'sphere',
+			turnSpeed: TAU / 3000,
+			mass: 1000,
+			// renderAs: 'sphere',
+			renderAs: 'model',
+			// model: 'apatosaurus',
+			model: 'diplodocus',
 		};
 		const dino = this.addNewActor(dinoOpt);
 		dino.coords = coords;
@@ -247,22 +256,26 @@ class DinoGame extends GenericGame {
 		});
 	}
 
-	async start() {
+	async setup() {
 		const { spirit } = this.addNewPlayer();
 		this.mainCharacter = this.addNewCharacter(spirit);
 		this.mainCharacter.inventorySize = 10;
 		this.mainCharacter.coords = [0, 0, 0];
 		this.mainCharacter.walkForce = 12000;
-		this.buildWorld();
-		// this.transition('home');
-		// this.transition('intro');
-		this.transition('explore');
+		// this.buildWorld();
 		const { gameScene } = this;
-		gameScene.setup([0, 100, 100]);
+		await gameScene.setup([0, 100, 100]);
+	}
+
+	async start() {
+		await this.transition('loading');
+		await this.transition('home');
+		// this.transition('intro');
+		await this.transition('explore');
 		this.pointerLocker
 			.setup() // Needs to happen after the canvas is created
 			.on('lockedMouseMove', ({ x, y }) => {
-				this.mainCharacter.facing += x * 0.001;
+				this.mainCharacter.turn(-x * 0.001);
 				// this.cameraPosition[X] += x * 1;
 				// this.cameraPosition[Y] += y * 1;
 				this.cameraVerticalRotation += y * -0.001;
@@ -270,8 +283,19 @@ class DinoGame extends GenericGame {
 		// gameScene.addBox();
 		// gameScene.addBox();
 		// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
+
+		// const testDino = this.addNewDino();
+		// testDino.autonomous = false;
+		// testDino.mobile = false;
+		// testDino.coords = [200, 200, 40];
+		// // testDino.physics = false;
+		// testDino.setFacing(0);
+		// window.d = testDino;
+
 		this.startAnimationGameLoop();
 	}
 }
+
+window.ArrayCoords = ArrayCoords;
 
 export default DinoGame;

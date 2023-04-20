@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 import { Vector3, Group, Scene, PerspectiveCamera } from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import Renderer from 'rocket-boots-three-toolbox/src/Renderer.js';
 // import noise from 'noise-esm';
+
+window.THREE = THREE;
 
 class DinoScene {
 	constructor() {
 		// Settings
 		this.gridConversion = [1, 1, -1];
 		this.coordsConversion = [1, 1, 1];
+		this.defaultModelScaleConversion = 10;
 		this.gridSquareSize = 20;
 		this.clearColor = '#344';
 		this.fov = 75;
@@ -25,6 +30,38 @@ class DinoScene {
 		this.worldGroup = null;
 		this.entitySceneObjects = {}; // keyed by the entity's unique entityId
 		this.chunkTerrains = [];
+		this.models = {
+			royalPalm: {
+				path: 'trees/RoyalPalmTreeGLB.glb',
+				scale: 10,
+			},
+			apatosaurus: {
+				path: 'dinos/FBX/Apatosaurus.fbx',
+				scale: 1,
+			},
+			// apatosaurus1: {
+			// 	path: 'dinos/converted/Apatosaurus.gltf',
+			// 	scale: 10,
+			// },
+			// apatosaurus2: {
+			// 	path: 'dinos/converted/Apatosaurus.glb',
+			// 	scale: 10,
+			// },
+			tRex: {
+				path: 'dinos/converted/Trex.glb',
+				scale: 10,
+			},
+			diplodocus: {
+				path: 'dinos/GLB/Diplodocus.glb',
+				scale: 0.2,
+			},
+			steg: {
+				path: 'dinos/GLB/steg.glb',
+				scale: 10,
+			},
+		};
+		this.fogNear = 2500;
+		this.fogFar = 6000;
 	}
 
 	registerSceneObj(entityId, obj) {
@@ -57,9 +94,9 @@ class DinoScene {
 	// 	);
 	// }
 
-	static convertCoordsToVector3(coords) {
+	static convertCoordsToVector3(coords, m = 1) {
 		const [x = 0, y = 0, z = 0] = coords;
-		return new Vector3(x, y, z);
+		return new Vector3(x * m, y * m, z * m);
 	}
 
 	convertCoordsToVector3(coords) {
@@ -81,7 +118,7 @@ class DinoScene {
 		const color = 0xFFFFFF;
 		const intensity = 0.05;
 		const light = new THREE.DirectionalLight(color, intensity);
-		light.position.set(0, 100, 40);
+		light.position.set(1000, 0, 2000);
 		light.lookAt(new Vector3());
 		this.scene.add(light);
 
@@ -94,7 +131,7 @@ class DinoScene {
 		// pointLight.lookAt(new Vector3());
 		this.scene.add(pointLight);
 
-		const ambientLight = new THREE.AmbientLight(0x404040, 0.75);
+		const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
 		this.scene.add(ambientLight);
 
 		// const sphereSize = 1;
@@ -107,19 +144,111 @@ class DinoScene {
 		this.renderer.setClearColor(this.clearColor);
 	}
 
-	setup(cameraCoords) {
+	loadGlft(filePath) {
+		const path = `./models/${filePath}`;
+		const loader = new GLTFLoader();
+		return new Promise((resolve, reject) => {
+			// Load passes a gltf object to `resolve`
+			loader.load(path, resolve, undefined, reject);
+		});
+	}
+
+	loadFbx(filePath) {
+		const path = `./models/${filePath}`;
+		const loader = new FBXLoader();
+		return new Promise((resolve, reject) => {
+			// Load passes a gltf object to `resolve`
+			loader.load(path, resolve, undefined, reject);
+		});
+	}
+
+	async loadModels() {
+		const modelKeys = Object.keys(this.models);
+		modelKeys.forEach((modelKey) => {
+			const model = this.models[modelKey];
+			if (model.format) return;
+			const pathComponents = model.path.split('.');
+			model.format = pathComponents[pathComponents.length - 1].toLowerCase();
+		});
+		const loadPromises = modelKeys
+			.map((modelKey) => {
+				const { path, format } = this.models[modelKey];
+				if (format === 'glft' || format === 'glb') {
+					return this.loadGlft(path);
+				}
+				if (format === 'fbx') {
+					return this.loadFbx(path);
+				}
+			});
+		const results = await Promise.allSettled(loadPromises);
+		results.forEach((promiseResult, i) => {
+			const { value } = promiseResult;
+			const key = modelKeys[i];
+			const model = this.models[key];
+			if (model.format === 'glft' || model.format === 'glb') {
+				model.gltf = value;
+				model.animations = value.animations;
+				model.object = value.scene;
+			} else if (model.format === 'fbx') {
+				model.fbx = value;
+				model.object = value;
+				// conso
+				// const anim = new FBXLoader();
+				// const mixer = new THREE.AnimationMixer(model.object);
+			}
+			console.log('Loaded', key, ':', model.object);
+			model.object.name = key;
+			let { scale } = model;
+			if (!scale) scale = this.defaultModelScaleConversion;
+			scale = (typeof model.scale === 'number') ? [scale, scale, scale] : [...scale];
+			model.object.scale.copy(DinoScene.convertCoordsToVector3(scale));
+			// model.object.rotation.fromArray([0, 0, 0], 'XYZ');
+			model.object.up.copy(new Vector3(0, 1, 0));
+			// model.object.lookAt(new Vector3(0, 0, 0));
+			model.object.traverse((c) => { c.castShadow = true; });
+			// Save a base rotation to the model object itself because there's no good place
+			// to save this on the Three Object that won't be lost when the object is cloned.
+			model.baseRotation = new THREE.Euler(Math.PI / 2, Math.PI / 2, 0, 'ZXY');
+		});
+		// test:
+		/*
+		const tree = this.models.royalPalm.object.clone();
+		this.worldGroup.add(tree);
+		tree.position.setX(80);
+		*/
+		const dino = this.models.steg.object.clone();
+		console.log(dino);
+		window.steg = dino;
+		this.worldGroup.add(dino);
+		dino.position.copy(new Vector3(400, 100, 80));
+
+		const mixer = new THREE.AnimationMixer(dino);
+		const clip = this.models.steg.animations[0];
+		const action = mixer.clipAction(clip);
+		action.play();
+
+		const box = new THREE.BoxHelper(dino, 0xffff00);
+		this.worldGroup.add(box);
+		// dino.scale.copy(new Vector3(100, 100, 100));
+		// dino.position.setY(80);
+		// dino.position.setZ(40);
+	}
+
+	async setup(cameraCoords) {
 		if (!this.renderer) this.setupRenderer();
 		this.scene = new Scene();
 		this.worldGroup = new Group();
 		this.terrainGroup = new Group();
 		this.worldGroup.add(this.terrainGroup);
 		this.scene.add(this.worldGroup);
+		this.scene.fog = new THREE.Fog(0xcccccc, this.fogNear, this.fogFar);
 		this.camera = this.makeCamera(cameraCoords);
 		this.camera.lookAt(new Vector3(0, 0, 0));
 		this.makeLight();
 		this.entitySceneObjects = {};
-		const axesHelper = new THREE.AxesHelper(5);
-		this.scene.add(axesHelper);
+		// const axesHelper = new THREE.AxesHelper(5);
+		// this.scene.add(axesHelper);
+		await this.loadModels();
 		return this;
 	}
 
@@ -163,6 +292,7 @@ class DinoScene {
 		if (clearColor && clearColor !== this.clearColor) {
 			this.clearColor = DinoScene.makeColor(clearColor);
 			this.renderer.setClearColor(this.clearColor);
+			this.scene.fog.color = this.clearColor;
 		}
 		if (cameraPosition || cameraRotationGoalArray) {
 			const [x = 0, y = 0, z = 0] = cameraRotationGoalArray;
@@ -181,9 +311,34 @@ class DinoScene {
 			entities.forEach((entity) => {
 				let sceneObj = this.entitySceneObjects[entity.entityId];
 				if (sceneObj) {
-					sceneObj.position.copy(DinoScene.convertCoordsToVector3(entity.coords));
-					sceneObj.rotation.set(0, 0, -entity.facing);
-					// TODO: see if position or anything else has changed
+					const pos = DinoScene.convertCoordsToVector3(entity.coords);
+					sceneObj.position.copy(pos);
+					// sceneObj.setRotationFromAxisAngle(sceneObj.up, 0);
+					// sceneObj.rotateOnAxis(sceneObj.up, Math.PI); // -entity.facing);
+					// Look up the model's base rotation and use that as the basis
+					// There HAS GOT TO BE A BETTER WAY TO DO THIS
+					if (entity.renderAs === 'model') {
+						const { baseRotation } = this.models[sceneObj.userData.modelName];
+						sceneObj.rotation.set(
+							baseRotation.x,
+							baseRotation.y + entity.facing,
+							baseRotation.z,
+							baseRotation.order,
+						);
+						// sceneObj.rotation.set(
+						// 	window.gx || 0,
+						// 	window.gy || 0,
+						// 	window.gz || 0,
+						// 	window.order || 'YXZ',
+						// );
+						// if (entity.isDinosaur) console.log(JSON.stringify(sceneObj.rotation));
+					} else {
+						// sceneObj.rotation.setX(entity.facing);
+					}
+					// if (entity.lookAt) {
+					// 	const look = sceneObj.localToWorld(DinoScene.convertCoordsToVector3(entity.lookAt));
+					// 	sceneObj.lookAt(look);
+					// }
 				} else {
 					sceneObj = this.addNewWorldEntity(entity);
 					if (!sceneObj) console.warn('Could not add entity to scene', entity);
@@ -334,7 +489,7 @@ class DinoScene {
 			color,
 			// map: texture,
 			// vertexColors: true,
-			// wireframe: true,
+			wireframe: true,
 			side: THREE.DoubleSide,
 			// Option 1
 			// displacementMap: heightMap,
@@ -345,6 +500,7 @@ class DinoScene {
 
 		// create the mesh for the terrain
 		const terrain = new THREE.Mesh(geometry, material);
+		terrain.receiveShadow = true;
 
 		{
 			const [x = 0, y = 0, z = 0] = center;
@@ -362,6 +518,7 @@ class DinoScene {
 		const terrain = this.makeTerrainChunkPlane(terrainChunk);
 		this.chunkTerrains.push(terrain);
 		this.terrainGroup.add(terrain); // add the terrain to the scene
+		terrain.receiveShadow = true;
 		this.entitySceneObjects[terrainChunk.entityId] = terrain;
 		return terrain;
 	}
@@ -388,7 +545,15 @@ class DinoScene {
 			const geometry = new THREE.SphereGeometry(size, 16, 8);
 			const material = this.makeEntityMaterial(entity, color);
 			sceneObj = new THREE.Mesh(geometry, material);
+		} else if (renderAs === 'model') {
+			const model = this.models[entity.model];
+			if (!model) throw new Error(`Cannot find model ${entity.model}`);
+			// console.log(model.object.userData);
+			sceneObj = model.object.clone();
+			sceneObj.userData.modelName = entity.model;
+			// console.log(sceneObj.userData);
 		}
+		sceneObj.castShadow = true;
 		// TODO: renderAs other types
 
 		sceneObj.position.copy(this.convertCoordsToVector3(entity.coords));

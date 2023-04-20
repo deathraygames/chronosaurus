@@ -1,4 +1,4 @@
-import { ArrayCoords, Random } from 'rocket-utility-belt';
+import { ArrayCoords, Random, TAU } from 'rocket-utility-belt';
 import Entity from './Entity.js';
 
 class Actor extends Entity {
@@ -16,6 +16,7 @@ class Actor extends Entity {
 			planning: 0,
 			//
 		};
+		this.turnSpeed = TAU / 1000; // one rotation in 1000 ms (1 second)
 		this.walkForce = this.walkForce || 1000;
 	}
 
@@ -58,21 +59,22 @@ class Actor extends Entity {
 		if (!this.autonomous) return 0;
 		if (this.cooldowns.planning) return 0;
 		if (this.wandering) {
-			const deltaX = Random.randomInt(100) - Random.randomInt(100);
-			const deltaY = Random.randomInt(100) - Random.randomInt(100);
+			const deltaX = Random.randomInt(1000) - Random.randomInt(1000);
+			const deltaY = Random.randomInt(1000) - Random.randomInt(1000);
 			this.moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
-			this.heatUp('planning', 10);
+			this.heatUp('planning', 20);
 			// console.log(this.name, 'planning a wander');
 		}
 	}
 
-	updateMovement() {
+	updateMovement(t) {
 		if (!this.mobile || !this.autonomous) return 0;
-		const CLOSE_ENOUGH = 1;
+		const CLOSE_ENOUGH = 40;
 		const distanceToTarget = ArrayCoords.getDistance(this.coords, this.moveTarget);
 		if (distanceToTarget < CLOSE_ENOUGH) return 0;
-		this.facing = ArrayCoords.getAngleFacing(this.coords, this.moveTarget);
-		this.walk();
+		const maxTurnRadians = t * this.turnSpeed;
+		const remainderToTurn = this.turnToward(this.moveTarget, maxTurnRadians);
+		if (remainderToTurn < 0.2) this.walk();
 	}
 
 	update(t, world) {

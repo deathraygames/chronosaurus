@@ -36,6 +36,10 @@ class DinoInterface {
 		elt.classList.add(HIDE_CLASS);
 	}
 
+	hideLoading() {
+		DinoInterface.hide('#loading');
+	}
+
 	updateInteraction(item) {
 		if (!item) {
 			DinoInterface.hide('#interaction-details');
@@ -51,8 +55,8 @@ class DinoInterface {
 
 	updateDebug(actor) {
 		const html = `
-			Vel: ${actor.vel.join('<br>')}<br>
-			Pos: ${actor.coords.join('<br>')}<br>
+			Vel: ${actor.vel.map((v) => Math.round(v * 100) / 100).join('<br>')}<br>
+			Pos: ${actor.coords.map((v) => Math.round(v * 100) / 100).join('<br>')}<br>
 			Grounded: ${actor.grounded}
 		`;
 		DinoInterface.setHtml('#debug', html);

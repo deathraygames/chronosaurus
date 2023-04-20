@@ -1,4 +1,4 @@
-import { Random, ArrayCoords, clamp } from 'rocket-utility-belt';
+import { Random, ArrayCoords } from 'rocket-utility-belt';
 
 const { X, Y, Z } = ArrayCoords;
 
@@ -7,7 +7,10 @@ class Entity {
 		this.entityId = Random.uniqueString();
 		this.isEntity = true;
 		this.coords = [0, 0, 0];
-		this.facing = 0; // radians
+		this.facing = 0; // radians - 0 --> along the x axis
+		// Positive radians are turning left (anti-clockwise)
+		// Negative radians are turning right (clockwise)
+		this.lookAt = [0, 0, 0]; // Calculated value
 		this.vel = [0, 0, 0];
 		this.acc = [0, 0, 0];
 		// Good to stop velocity from skyrocketing
@@ -20,6 +23,7 @@ class Entity {
 		this.inventorySize = 0;
 		this.heightSizeOffset = 0.5;
 		this.size = 2;
+		this.lookLength = 30;
 		this.remove = false;
 		Object.keys(properties).forEach((key) => {
 			this[key] = JSON.parse(JSON.stringify(properties[key]));
@@ -60,8 +64,35 @@ class Entity {
 		this.moveTo(ArrayCoords.add(this.coords, relativeCoords));
 	}
 
+	calcLookAt() {
+		const [x, y] = ArrayCoords.polarToCartesian(this.lookLength, this.facing);
+		const h = this.coords[Z];
+		// TODO: ^ Add the relative height of the terrain at the x,y spot
+		this.lookAt = ArrayCoords.add(this.coords, [x, y, h]);
+		return this.lookAt;
+	}
+
 	turn(relativeRadians = 0) {
 		this.facing += relativeRadians;
+		this.calcLookAt();
+	}
+
+	setFacing(angle = 0) {
+		this.facing = angle;
+		this.calcLookAt();
+	}
+
+	faceToward(target) {
+		// console.log('faceToward', target);
+		this.setFacing(ArrayCoords.getAngleFacing(this.coords, target));
+	}
+
+	turnToward(target, maxRadians = Infinity) {
+		const desiredAngle = ArrayCoords.getAngleFacing(this.coords, target);
+		const desiredTurn = desiredAngle - this.facing;
+		const actual = Math.min(maxRadians, desiredTurn);
+		this.turn(actual);
+		return desiredTurn - actual; // what's left
 	}
 
 	getTags() {
@@ -98,8 +129,8 @@ class Entity {
 	applyMovementForce(force = 0, direction = 0) {
 		const angleOfForce = (this.facing + direction); // not sure why we need to negate this
 		const directedForce = [
-			force * Math.sin(angleOfForce),
 			force * Math.cos(angleOfForce),
+			force * Math.sin(angleOfForce),
 			0,
 		];
 		this.applyForce(directedForce);

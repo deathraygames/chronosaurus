@@ -37,7 +37,9 @@ class DinoWorld {
 		return altitudeScale * noise.perlin2(noiseScale * x, noiseScale * y);
 	}
 
-	calcTerrainHeight(x, y) {
+	calcTerrainHeight(xP, y) {
+		return 0;
+		const x = xP + 120;
 		const noiseScale = 0.002;
 		// const noiseScale = 0.0002;
 		const minHeight = 0;
