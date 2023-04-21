@@ -31,30 +31,56 @@ class DinoItem extends Entity {
 	}
 
 	interact(who, amount = 0) {
-		if (!DinoItem.isItemInRangeInteractable(this, who.coords)) return 0;
+		if (!DinoItem.isItemInRangeInteractable(this, who.coords)) return [];
 		if (this.interactionEffort) {
 			this.interactionProgress += amount;
 			const percent = this.getInteractionPercent();
-			if (percent < 1) return percent;
+			if (percent < 1) return [];
 		}
 		// either no effort is needed, or we're done with the progress
 		if (!this.interactionResult) {
 			console.warn('No interaction result for item');
-			return 1;
+			return [];
 		}
-		Object.keys(this.interactionResult).forEach((resultKey) => {
+		const messages = Object.keys(this.interactionResult).reduce((messagesArr, resultKey) => {
 			if (resultKey === 'modify') {
 				const { modify } = this.interactionResult;
 				Object.keys(modify).forEach((propName) => {
 					this[propName] = modify[propName];
 				});
-			} else if (resultKey === 'pickUp' && this.interactionResult.pickUp) {
+			}
+			if (resultKey === 'pickUp' && this.interactionResult.pickUp) {
 				const added = who.addToInventory(this);
 				this.remove = added;
+				console.log(this, 'removed?', added);
+				if (added && this.inventoryDescription) {
+					messagesArr.push(
+						`You pick up the ${this.name}.
+						${this.inventoryDescription}`,
+					);
+				}
+			} else if (resultKey === 'give' && this.interactionResult.give) {
+				const item = who.takeSelectionFromInventory(this.interactionResult.give);
+				if (item) {
+					this.addToInventory(item);
+					messagesArr.push('You give an item...');
+				} else {
+					messagesArr.push('You do not have any items that can be used here.');
+				}
+			} else if (resultKey === 'repair' && this.interactionResult.repair) {
+				const item = who.takeSelectionFromInventory(this.interactionResult.repair);
+				if (item) {
+					// this.addToInventory(item);
+					this.damage -= 1;
+					messagesArr.push('You use an item to repair...');
+				} else {
+					messagesArr.push('You do not have any items that can be used to repair.');
+				}
 			}
 			// else -- things like spawning something, damage, effects
-		});
-		return 1;
+			return messagesArr;
+		}, []);
+		return messages;
 	}
 }
 

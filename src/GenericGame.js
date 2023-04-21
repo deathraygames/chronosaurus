@@ -28,7 +28,7 @@ class GenericGame extends StateCommander {
 		this.maxMouseWheel = maxMouseWheel;
 		this.loop = new Looper();
 		this.mouseWheelWatcher = new MouseWheelWatcher({ min: minMouseWheel, max: maxMouseWheel });
-		this.gameScene = new SceneClass();
+		this.gameScene = new SceneClass({ models: options.models });
 		this.world = new WorldClass();
 		this.interface = new InterfaceClass();
 		this.ActorClass = ActorClass;
@@ -162,6 +162,22 @@ class GenericGame extends StateCommander {
 		// TODO: this could be made more efficient since we're checking distance twice
 		// (once in isItemInRangeInteractable, once in findNearest)
 		return GenericGame.findNearest(this.items, coords, filter);
+	}
+
+	removeLost(things = [], despawnCenter = [0, 0, 0]) {
+		things.forEach((thing) => {
+			if (thing.isCharacter || thing.important) return;
+			if (typeof thing.despawnRadius !== 'number') return;
+			const distance = ArrayCoords.getDistance(despawnCenter, thing.coords);
+			if (distance > this.despawnRadius) thing.remove = true;
+		});
+	}
+
+	despawn(despawnCenter) {
+		this.removeLost(this.actors, despawnCenter);
+		this.removeLost(this.items, despawnCenter);
+		this.cleanItems();
+		this.cleanActors();
 	}
 
 	static cleanRemoved(arr) {

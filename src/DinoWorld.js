@@ -15,8 +15,9 @@ class DinoWorld {
 		this.chunkSizeMeters = 128;
 		this.chunkSize = this.unitsPerMeter * this.chunkSizeMeters; // 2560 units
 		this.halfChunkSize = this.chunkSize / 2;
-		this.terrainSegmentSize = 10; // (originally 10; 256 works for testing)
-		this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize; // 256
+		this.terrainSegmentSize = 32; // 10; // (originally 10; 256 works for testing)
+		this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize;
+		// Segements: 2560/10 = 256, 2560/20 = 128, 2560/32 = 80, 2560/256 = 10
 		// While the segments break up the chunk into various triangles, each side
 		// of the terrain has +1 vertex compared to the # of segments
 		this.terrainChunkVertexSize = this.terrainSegmentsPerChunk + 1;
@@ -38,7 +39,7 @@ class DinoWorld {
 	}
 
 	calcTerrainHeight(xP, y) {
-		return 0;
+		// return 0;
 		const x = xP + 120;
 		const noiseScale = 0.002;
 		// const noiseScale = 0.0002;
@@ -160,8 +161,8 @@ class DinoWorld {
 		// await waitForImage(image);
 		// console.log(image.complete);
 
-		document.getElementById('map').innerHTML = '';
-		document.getElementById('map').appendChild(image);
+		// document.getElementById('map').innerHTML = '';
+		// document.getElementById('map').appendChild(image);
 		return {
 			color: (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
 			textureImage: image,
@@ -186,14 +187,16 @@ class DinoWorld {
 		return chunk;
 	}
 
-	makeTerrainChunks(coords) {
+	makeTerrainChunks(coords, chunkRadius = 1) {
 		if (!coords) throw new Error('Missing coords param');
 		const centerChunkCoords = this.getChunkCoords(coords);
 		// const centerChunk = this.addNewTerrainChunk(centerChunkCoords);
 		// return [centerChunk];
 		const chunks = [];
-		for (let x = -1; x <= 1; x += 1) {
-			for (let y = -1; y <= 1; y += 1) {
+		const MAX = Math.round(chunkRadius);
+		const MIN = -MAX;
+		for (let x = MIN; x <= MAX; x += 1) {
+			for (let y = MIN; y <= MAX; y += 1) {
 				const newChunkCoords = ArrayCoords.add(centerChunkCoords, [x, y, 0]);
 				const chunk = this.addNewTerrainChunk(newChunkCoords);
 				chunks.push(chunk);

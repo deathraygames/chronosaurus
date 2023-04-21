@@ -14,7 +14,7 @@ class Entity {
 		this.vel = [0, 0, 0];
 		this.acc = [0, 0, 0];
 		// Good to stop velocity from skyrocketing
-		this.maxVelocity = 500;
+		this.maxVelocity = 400;
 		this.movementForce = 0; // track movement force just to know when entity is moving on its own
 		this.tags = [];
 		this.renderAs = 'box';
@@ -110,13 +110,47 @@ class Entity {
 		return (matchingTags.length > 0);
 	}
 
-	addToInventory(thing) {
+	getInventoryCount() {
 		const itemsInInv = this.inventory.filter((item) => item);
-		if (itemsInInv.length < this.inventorySize) {
-			this.inventory.push(thing);
-			return true;
-		}
-		return false;
+		return itemsInInv.length;
+	}
+
+	addToInventory(thing) {
+		if (this.getInventoryCount() >= this.inventorySize) return false;
+		// TODO: Look for the first empty spot, if none then do push
+		this.inventory.push(thing);
+		return true;
+	}
+
+	takeFromInventory(i) {
+		if (typeof i !== 'number') throw new Error('i needs to be a number');
+		const item = this.inventory[i];
+		this.inventory[i] = null;
+		return item || null;
+	}
+
+	takeSelectionFromInventory(selector = '') {
+		const [givePropertyName, givePropertyValue] = selector.split(':');
+		const [index] = this.findInInventory(givePropertyName, givePropertyValue);
+		if (index === -1) return null;
+		return this.takeFromInventory(index);
+	}
+
+	findInInventory(propertyName, value) {
+		// const itemsInInv = this.inventory.filter((item) => item);
+		const matchTruthy = (typeof value === 'undefined');
+		let firstFoundIndex = -1;
+		const doesMatch = (item) => {
+			if (!item) return false;
+			if (matchTruthy) return Boolean(item[propertyName]);
+			return (item[propertyName] === value);
+		};
+		const matchingItems = this.inventory.filter((item, i) => {
+			const m = doesMatch(item);
+			if (m && firstFoundIndex === -1) firstFoundIndex = i;
+			return m;
+		});
+		return [firstFoundIndex, matchingItems];
 	}
 
 	applyForce(force = []) {
@@ -141,8 +175,8 @@ class Entity {
 		if (!this.physics) return 0;
 		const seconds = t / 1000;
 		const {
-			gravity = [0, 0, -4],
-			groundFriction = 0.95,
+			gravity = [0, 0, -6],
+			groundFriction = 0.94,
 			airFriction = 0.9999,
 			accelerationDecay = 0.9,
 		} = options;
@@ -159,7 +193,7 @@ class Entity {
 		this.acc = ArrayCoords.multiply(this.acc, accelerationDecay);
 		// Friction
 		let friction = (this.grounded) ? groundFriction : airFriction;
-		if (this.movementForce) friction = 1; // no friction if moving/walking
+		if (this.movementForce) friction = airFriction; // no friction if moving/walking
 		this.vel = ArrayCoords.multiply(this.vel, friction);
 		this.vel = [
 			(Math.abs(this.vel[X]) < 0.001) ? 0 : this.vel[X],

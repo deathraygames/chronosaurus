@@ -51777,6 +51777,100 @@
 		sRGBEncoding: sRGBEncoding
 	});
 
+	function clone( source ) {
+
+		const sourceLookup = new Map();
+		const cloneLookup = new Map();
+
+		const clone = source.clone();
+
+		parallelTraverse( source, clone, function ( sourceNode, clonedNode ) {
+
+			sourceLookup.set( clonedNode, sourceNode );
+			cloneLookup.set( sourceNode, clonedNode );
+
+		} );
+
+		clone.traverse( function ( node ) {
+
+			if ( ! node.isSkinnedMesh ) return;
+
+			const clonedMesh = node;
+			const sourceMesh = sourceLookup.get( node );
+			const sourceBones = sourceMesh.skeleton.bones;
+
+			clonedMesh.skeleton = sourceMesh.skeleton.clone();
+			clonedMesh.bindMatrix.copy( sourceMesh.bindMatrix );
+
+			clonedMesh.skeleton.bones = sourceBones.map( function ( bone ) {
+
+				return cloneLookup.get( bone );
+
+			} );
+
+			clonedMesh.bind( clonedMesh.skeleton, clonedMesh.bindMatrix );
+
+		} );
+
+		return clone;
+
+	}
+
+
+
+
+	function parallelTraverse( a, b, callback ) {
+
+		callback( a, b );
+
+		for ( let i = 0; i < a.children.length; i ++ ) {
+
+			parallelTraverse( a.children[ i ], b.children[ i ], callback );
+
+		}
+
+	}
+
+	class Renderer extends WebGLRenderer {
+		constructor(options = {}) {
+			super();
+			// Desired width, height, aspect
+			this.width = options.width || null; // window.innerWidth;
+			this.height = options.height || null; // window.innerHeight;
+			this.aspect = options.aspect || null;
+			if (options.height && options.width) {
+				this.aspect = options.width / options.height;
+			}
+			
+			this.pixelated = Boolean(options.pixelated);
+			this.setPixelRatio(window.devicePixelRatio);
+			// this.setSize(this.width, this.height);
+			this.toneMapping = ACESFilmicToneMapping;
+			this.container = window.document.body;
+			if (typeof options.container === 'string') this.container = window.document.getElementById('container');
+			this.container.appendChild(this.domElement);
+			this.fixSize();
+		}
+
+		fixSize(camera) {
+			const w = this.width || window.innerWidth;
+			const h = this.height || window.innerHeight;
+			const aspect = this.aspect || (w / h); // Desired aspect
+			const windowAspect = window.innerWidth / window.innerHeight; // Actual aspect
+			this.setSize(w, h);
+			// Set the style to help keep the aspect ratio desired
+			const { style } = this.domElement;
+			const expandWidth = (windowAspect <= this.aspect);
+			style.width = expandWidth ? '100vw' : 'auto';
+			style.height = expandWidth ? 'auto' : '100vh';
+			if (this.pixelated) style.imageRendering = 'pixelated';
+			if (camera) {
+				camera.aspect = aspect;
+				camera.updateProjectionMatrix();
+			}
+		}
+	}
+
 	/**
 	 * @param {BufferGeometry} geometry
 	 * @param {number} drawMode
@@ -61201,42 +61295,184 @@
 
 	}
 
-	class Renderer extends WebGLRenderer {
-		constructor(options = {}) {
-			super();
-			// Desired width, height, aspect
-			this.width = options.width || null; // window.innerWidth;
-			this.height = options.height || null; // window.innerHeight;
-			this.aspect = options.aspect || null;
-			if (options.height && options.width) {
-				this.aspect = options.width / options.height;
-			}
-			
-			this.pixelated = Boolean(options.pixelated);
-			this.setPixelRatio(window.devicePixelRatio);
-			// this.setSize(this.width, this.height);
-			this.toneMapping = ACESFilmicToneMapping;
-			this.container = window.document.body;
-			if (typeof options.container === 'string') this.container = window.document.getElementById('container');
-			this.container.appendChild(this.domElement);
-			this.fixSize();
+	class ModelManager {
+		constructor(models = {}) {
+			this.models = {};
+			this.modelsPath = './models';
+			this.defaultModelScaleConversion = 10;
+			this.setup(models);
 		}
 
-		fixSize(camera) {
-			const w = this.width || window.innerWidth;
-			const h = this.height || window.innerHeight;
-			const aspect = this.aspect || (w / h); // Desired aspect
-			const windowAspect = window.innerWidth / window.innerHeight; // Actual aspect
-			this.setSize(w, h);
-			// Set the style to help keep the aspect ratio desired
-			const { style } = this.domElement;
-			const expandWidth = (windowAspect <= this.aspect);
-			style.width = expandWidth ? '100vw' : 'auto';
-			style.height = expandWidth ? 'auto' : '100vh';
-			if (this.pixelated) style.imageRendering = 'pixelated';
-			if (camera) {
-				camera.aspect = aspect;
-				camera.updateProjectionMatrix();
+		getModelKeys() {
+			return Object.keys(this.models);
+		}
+
+		getModel(key) {
+			const model = this.models[key];
+			if (!model) throw new Error(`Could not find model ${key}`);
+			return model;
+		}
+
+		setup(modelsData = {}) {
+			this.models = JSON.parse(JSON.stringify(modelsData));
+			const modelKeys = this.getModelKeys();
+			modelKeys.forEach((modelKey) => {
+				const model = this.models[modelKey];
+				model.key = modelKey;
+				let { scale } = model;
+				if (!scale) scale = this.defaultModelScaleConversion;
+				scale = (typeof scale === 'number') ? [scale, scale, scale] : [...scale];
+				model.scale = (new Vector3()).fromArray(scale);
+				if (!model.format) {
+					const pathComponents = model.path.split('.');
+					model.format = pathComponents[pathComponents.length - 1].toLowerCase();
+				}
+				if (model.color) {
+					if (typeof model.color === 'string') {
+						model.color = new Color(model.color);
+					} else {
+						const [r, g, b] = model.color;
+						model.color = new Color(r, g, b);
+					}
+				}
+			});
+		}
+
+		static loadGlft(fullFilePath, onProgress) {
+			const loader = new GLTFLoader();
+			return new Promise((resolve, reject) => {
+				// Load passes a gltf object to `resolve`
+				loader.load(fullFilePath, resolve, onProgress, reject);
+			});
+		}
+
+		static loadFbx(fullFilePath, onProgress) {
+			const loader = new FBXLoader();
+			return new Promise((resolve, reject) => {
+				// Load passes an fbx object to `resolve`
+				loader.load(fullFilePath, resolve, onProgress, reject);
+			});
+		}
+
+		loadGlft(filePath, onProgress) {
+			const path = `${this.modelsPath}/${filePath}`;
+			return ModelManager.loadGlft(path, onProgress);
+		}
+
+		loadFbx(filePath, onProgress) {
+			const path = `${this.modelsPath}/${filePath}`;
+			return ModelManager.loadFbx(path, onProgress);
+		}
+
+		async loadAll() {
+			const modelKeys = Object.keys(this.models);
+			const loadPromises = modelKeys
+				.map((modelKey) => {
+					const model = this.models[modelKey];
+					const { path, format } = model;
+					if (format === 'glft' || format === 'glb') {
+						return this.loadGlft(path);
+					}
+					if (format === 'fbx') {
+						return this.loadFbx(path);
+					}
+					console.warn('Format', format, 'is not supported');
+					return null;
+				});
+			const results = await Promise.allSettled(loadPromises);
+			return results;
+		}
+
+		async loadModels() {
+			const modelKeys = this.getModelKeys();
+			const results = await this.loadAll();
+			results.forEach((promiseResult, i) => {
+				const { value } = promiseResult;
+				const key = modelKeys[i];
+				const model = this.models[key];
+				if (model.format === 'glft' || model.format === 'glb') {
+					model.gltf = value;
+					model.animations = value.animations;
+					model.object = value.scene;
+				} else if (model.format === 'fbx') {
+					model.fbx = value;
+					model.object = value;
+					// conso
+					// const anim = new FBXLoader();
+					// const mixer = new THREE.AnimationMixer(model.object);
+				} else {
+					throw new Error(`Unsupported format ${model.format}`);
+				}
+				console.log('\tLoaded', key);
+				model.object.name = key;
+				model.object.scale.copy(model.scale);
+				// model.object.rotation.fromArray([0, 0, 0], 'XYZ');
+				model.object.up.copy(new Vector3(0, 1, 0));
+				// model.object.lookAt(new Vector3(0, 0, 0));
+				model.object.traverse((c) => { c.castShadow = true; });
+				// Save a base rotation to the model object itself because there's no good place
+				// to save this on the Three Object that won't be lost when the object is cloned.
+				model.baseRotation = new Euler(Math.PI / 2, Math.PI / 2, 0, 'ZXY');
+
+				if (model.color || typeof model.castShadow === 'boolean') {
+					model.object.traverse((child) => {
+						if (!child.isMesh) return;
+						if (model.color) {
+							this.updateMaterial(child, model.color);
+						}
+						if (typeof model.castShadow === 'boolean') {
+							child.castShadow = model.castShadow;
+						}
+					});
+				}
+				// model.object.traverse((obj) => {
+				// 	if (!obj.isMesh) return;
+				// 	obj.material = new THREE.MeshDepthMaterial({
+				// 		fog: true,
+				// 		wireframe: true,
+				// 	});
+				// });
+			});
+			// const dino = this.makeNewObject('tRex', [400, 100, 80]);
+			// window.d = dino;
+			// window.g.gameScene.worldGroup.add(dino);
+			// this.playClip(dino, 0);
+			return modelKeys.map((modelKey) => this.models[modelKey]);
+		}
+
+		updateMaterial(obj, color) {
+			obj.material = new MeshStandardMaterial({
+				color,
+			});
+			obj.needsUpdate = true;
+		}
+
+		makeNewObject(modelKey, positionArray) {
+			const model = this.getModel(modelKey);
+			const obj = clone(model.object);
+			obj.userData.modelKey = modelKey;
+			if (positionArray) obj.position.fromArray(positionArray);
+			return obj;
+		}
+
+		getBaseRotation(modelKey) {
+			return this.models[modelKey].baseRotation;
+		}
+
+		playClip(obj, index = 0) {
+			const { modelKey } = obj.userData;
+			const model = this.getModel(modelKey);
+			if (!model.animations) {
+				console.warn('No animations found for model', modelKey, obj.uuid);
+				return;
+			}
+			try {
+				const mixer = new AnimationMixer(obj);
+				const clip = model.animations[index];
+				const action = mixer.clipAction(clip);
+				action.play();
+			} catch (err) {
+				console.warn(err);
 			}
 		}
 	}
@@ -61246,11 +61482,10 @@
 	window.THREE = THREE;
 
 	class DinoScene {
-		constructor() {
+		constructor(options = {}) {
 			// Settings
 			this.gridConversion = [1, 1, -1];
 			this.coordsConversion = [1, 1, 1];
-			this.defaultModelScaleConversion = 10;
 			this.gridSquareSize = 20;
 			this.clearColor = '#344';
 			this.fov = 75;
@@ -61265,39 +61500,13 @@
 			this.renderer = null;
 			this.autoFacingObjects = [];
 			this.camera = null;
+			// Scene hierarchy: Scene --> world group --> terrain and entity groups --> everything else
 			this.worldGroup = null;
+			this.terrainGroup = null;
+			this.entityGroup = null;
 			this.entitySceneObjects = {}; // keyed by the entity's unique entityId
 			this.chunkTerrains = [];
-			this.models = {
-				royalPalm: {
-					path: 'trees/RoyalPalmTreeGLB.glb',
-					scale: 10,
-				},
-				apatosaurus: {
-					path: 'dinos/FBX/Apatosaurus.fbx',
-					scale: 1,
-				},
-				// apatosaurus1: {
-				// 	path: 'dinos/converted/Apatosaurus.gltf',
-				// 	scale: 10,
-				// },
-				// apatosaurus2: {
-				// 	path: 'dinos/converted/Apatosaurus.glb',
-				// 	scale: 10,
-				// },
-				tRex: {
-					path: 'dinos/converted/Trex.glb',
-					scale: 10,
-				},
-				diplodocus: {
-					path: 'dinos/GLB/Diplodocus.glb',
-					scale: 0.2,
-				},
-				steg: {
-					path: 'dinos/GLB/steg.glb',
-					scale: 10,
-				},
-			};
+			this.modelMgr = new ModelManager(options.models);
 			this.fogNear = 2500;
 			this.fogFar = 6000;
 		}
@@ -61322,16 +61531,6 @@
 			return foundEntityId;
 		}
 
-		// convertGridToRenderingVector3(gridCoords) {
-		// 	const [x = 0, y = 0, z = 0] = gridCoords;
-		// 	const [convX, convY, convZ] = this.gridConversion;
-		// 	return new Vector3(
-		// 		x * this.gridSquareSize * convX,
-		// 		y * this.gridSquareSize * convY,
-		// 		z * this.gridSquareSize * convZ,
-		// 	);
-		// }
-
 		static convertCoordsToVector3(coords, m = 1) {
 			const [x = 0, y = 0, z = 0] = coords;
 			return new Vector3(x * m, y * m, z * m);
@@ -61352,13 +61551,18 @@
 			return camera;
 		}
 
+		setDirLight(x = 0, y = 0, z = 0) {
+			if (!this.dirLight) {
+				const color = 0xFFFFFF;
+				const intensity = 0.3;
+				this.dirLight = new DirectionalLight(color, intensity);
+				this.scene.add(this.dirLight);
+			}
+			this.dirLight.position.set(x, y, z);
+		}
+
 		makeLight() {
-			const color = 0xFFFFFF;
-			const intensity = 0.05;
-			const light = new DirectionalLight(color, intensity);
-			light.position.set(1000, 0, 2000);
-			light.lookAt(new Vector3());
-			this.scene.add(light);
+			this.setDirLight(0, -1, 6);
 
 			// const { eyeLightColor, eyeLightIntensity, eyeLightDistance } = this;
 			// this.eyeLight = new THREE.PointLight(eyeLightColor, eyeLightIntensity, eyeLightDistance);
@@ -61382,102 +61586,14 @@
 			this.renderer.setClearColor(this.clearColor);
 		}
 
-		loadGlft(filePath) {
-			const path = `./models/${filePath}`;
-			const loader = new GLTFLoader();
-			return new Promise((resolve, reject) => {
-				// Load passes a gltf object to `resolve`
-				loader.load(path, resolve, undefined, reject);
-			});
-		}
-
-		loadFbx(filePath) {
-			const path = `./models/${filePath}`;
-			const loader = new FBXLoader();
-			return new Promise((resolve, reject) => {
-				// Load passes a gltf object to `resolve`
-				loader.load(path, resolve, undefined, reject);
-			});
-		}
-
-		async loadModels() {
-			const modelKeys = Object.keys(this.models);
-			modelKeys.forEach((modelKey) => {
-				const model = this.models[modelKey];
-				if (model.format) return;
-				const pathComponents = model.path.split('.');
-				model.format = pathComponents[pathComponents.length - 1].toLowerCase();
-			});
-			const loadPromises = modelKeys
-				.map((modelKey) => {
-					const { path, format } = this.models[modelKey];
-					if (format === 'glft' || format === 'glb') {
-						return this.loadGlft(path);
-					}
-					if (format === 'fbx') {
-						return this.loadFbx(path);
-					}
-				});
-			const results = await Promise.allSettled(loadPromises);
-			results.forEach((promiseResult, i) => {
-				const { value } = promiseResult;
-				const key = modelKeys[i];
-				const model = this.models[key];
-				if (model.format === 'glft' || model.format === 'glb') {
-					model.gltf = value;
-					model.animations = value.animations;
-					model.object = value.scene;
-				} else if (model.format === 'fbx') {
-					model.fbx = value;
-					model.object = value;
-					// conso
-					// const anim = new FBXLoader();
-					// const mixer = new THREE.AnimationMixer(model.object);
-				}
-				console.log('Loaded', key, ':', model.object);
-				model.object.name = key;
-				let { scale } = model;
-				if (!scale) scale = this.defaultModelScaleConversion;
-				scale = (typeof model.scale === 'number') ? [scale, scale, scale] : [...scale];
-				model.object.scale.copy(DinoScene.convertCoordsToVector3(scale));
-				// model.object.rotation.fromArray([0, 0, 0], 'XYZ');
-				model.object.up.copy(new Vector3(0, 1, 0));
-				// model.object.lookAt(new Vector3(0, 0, 0));
-				model.object.traverse((c) => { c.castShadow = true; });
-				// Save a base rotation to the model object itself because there's no good place
-				// to save this on the Three Object that won't be lost when the object is cloned.
-				model.baseRotation = new Euler(Math.PI / 2, Math.PI / 2, 0, 'ZXY');
-			});
-			// test:
-			/*
-			const tree = this.models.royalPalm.object.clone();
-			this.worldGroup.add(tree);
-			tree.position.setX(80);
-			*/
-			const dino = this.models.steg.object.clone();
-			console.log(dino);
-			window.steg = dino;
-			this.worldGroup.add(dino);
-			dino.position.copy(new Vector3(400, 100, 80));
-
-			const mixer = new AnimationMixer(dino);
-			const clip = this.models.steg.animations[0];
-			const action = mixer.clipAction(clip);
-			action.play();
-
-			const box = new BoxHelper(dino, 0xffff00);
-			this.worldGroup.add(box);
-			// dino.scale.copy(new Vector3(100, 100, 100));
-			// dino.position.setY(80);
-			// dino.position.setZ(40);
-		}
-
 		async setup(cameraCoords) {
 			if (!this.renderer) this.setupRenderer();
 			this.scene = new Scene();
 			this.worldGroup = new Group();
 			this.terrainGroup = new Group();
+			this.entityGroup = new Group();
 			this.worldGroup.add(this.terrainGroup);
+			this.worldGroup.add(this.entityGroup);
 			this.scene.add(this.worldGroup);
 			this.scene.fog = new Fog(0xcccccc, this.fogNear, this.fogFar);
 			this.camera = this.makeCamera(cameraCoords);
@@ -61486,7 +61602,7 @@
 			this.entitySceneObjects = {};
 			// const axesHelper = new THREE.AxesHelper(5);
 			// this.scene.add(axesHelper);
-			await this.loadModels();
+			await this.modelMgr.loadModels();
 			return this;
 		}
 
@@ -61512,7 +61628,20 @@
 			const entityId = this.findRegisteredSceneObjEntityId(uuid);
 			this.deregisterSceneObj(entityId);
 			obj.removeFromParent();
+			obj.traverse((child) => {
+				if (child.geometry) child.geometry.dispose();
+				if (child.material) child.material.dispose();
+				// TODO: Also dispose of textures
+			});
 			console.log('removing object', entityId, uuid);
+		}
+
+		removeNotVisible(group, visibleUuids) {
+			group.children.forEach((child) => {
+				if (!visibleUuids.includes(child.uuid)) {
+					this.removeObject(child);
+				}
+			});
 		}
 
 		static makeColor(colorParam) {
@@ -61544,7 +61673,7 @@
 				this.worldGroup.position.copy(DinoScene.convertCoordsToVector3(worldCoords));
 			}
 			if (entities) {
-				const visibleEntityUuids = [];
+				const visibleEntityUuids = []; // "visible" as in "included in the update"
 				entities.forEach((entity) => {
 					let sceneObj = this.entitySceneObjects[entity.entityId];
 					if (sceneObj) {
@@ -61555,7 +61684,7 @@
 						// Look up the model's base rotation and use that as the basis
 						// There HAS GOT TO BE A BETTER WAY TO DO THIS
 						if (entity.renderAs === 'model') {
-							const { baseRotation } = this.models[sceneObj.userData.modelName];
+							const baseRotation = this.modelMgr.getBaseRotation(entity.model);
 							sceneObj.rotation.set(
 								baseRotation.x,
 								baseRotation.y + entity.facing,
@@ -61581,32 +61710,23 @@
 					visibleEntityUuids.push(sceneObj.uuid);
 				});
 				// Loop over all world objects and remove any not visible
-				this.worldGroup.children.forEach((terrainChild) => {
-					if (terrainChild.isGroup) return;
-					if (!visibleEntityUuids.includes(terrainChild.uuid)) {
-						this.removeObject(terrainChild);
-					}
-				});
+				this.removeNotVisible(this.entityGroup, visibleEntityUuids);
 			}
 			if (terrainChunks) {
-				const visibleTerrainUuids = [];
+				const visibleTerrainUuids = []; // "visible" as in "included in the update"
 				terrainChunks.forEach((chunk) => {
 					let sceneObj = this.entitySceneObjects[chunk.entityId];
 					if (sceneObj) {
 						this.applyTextureImageToObject(sceneObj, chunk.textureImage);
 					} else {
-						console.log('Adding terrain for chunk', chunk);
+						console.log('Adding terrain for chunk', chunk.entityId);
 						sceneObj = this.addNewTerrainChunkPlane(chunk);
 					}
 					visibleTerrainUuids.push(sceneObj.uuid);
 				});
 				// Loop over terrain objects (children of terrainGroup)
 				// and remove any not visible
-				this.terrainGroup.children.forEach((terrainChild) => {
-					if (!visibleTerrainUuids.includes(terrainChild.uuid)) {
-						this.removeObject(terrainChild);
-					}
-				});
+				this.removeNotVisible(this.terrainGroup, visibleTerrainUuids);
 			}
 			this.updateToGoals(t);
 			return this;
@@ -61717,7 +61837,7 @@
 				color,
 				// map: texture,
 				// vertexColors: true,
-				wireframe: true,
+				// wireframe: true,
 				side: DoubleSide,
 				// Option 1
 				// displacementMap: heightMap,
@@ -61773,18 +61893,18 @@
 				const material = this.makeEntityMaterial(entity, color);
 				sceneObj = new Mesh(geometry, material);
 			} else if (renderAs === 'model') {
-				const model = this.models[entity.model];
-				if (!model) throw new Error(`Cannot find model ${entity.model}`);
 				// console.log(model.object.userData);
-				sceneObj = model.object.clone();
+				// sceneObj = model.object.clone();
+				sceneObj = this.modelMgr.makeNewObject(entity.model);
 				sceneObj.userData.modelName = entity.model;
+				this.modelMgr.playClip(sceneObj, 0);
 				// console.log(sceneObj.userData);
 			}
-			sceneObj.castShadow = true;
+			// sceneObj.castShadow = true;
 			// TODO: renderAs other types
 
 			sceneObj.position.copy(this.convertCoordsToVector3(entity.coords));
-			this.worldGroup.add(sceneObj);
+			this.entityGroup.add(sceneObj);
 			this.entitySceneObjects[entity.entityId] = sceneObj;
 			return sceneObj;
 		}
@@ -61859,7 +61979,7 @@
 			this.vel = [0, 0, 0];
 			this.acc = [0, 0, 0];
 			// Good to stop velocity from skyrocketing
-			this.maxVelocity = 500;
+			this.maxVelocity = 400;
 			this.movementForce = 0; // track movement force just to know when entity is moving on its own
 			this.tags = [];
 			this.renderAs = 'box';
@@ -61955,13 +62075,47 @@
 			return (matchingTags.length > 0);
 		}
 
-		addToInventory(thing) {
+		getInventoryCount() {
 			const itemsInInv = this.inventory.filter((item) => item);
-			if (itemsInInv.length < this.inventorySize) {
-				this.inventory.push(thing);
-				return true;
-			}
-			return false;
+			return itemsInInv.length;
+		}
+
+		addToInventory(thing) {
+			if (this.getInventoryCount() >= this.inventorySize) return false;
+			// TODO: Look for the first empty spot, if none then do push
+			this.inventory.push(thing);
+			return true;
+		}
+
+		takeFromInventory(i) {
+			if (typeof i !== 'number') throw new Error('i needs to be a number');
+			const item = this.inventory[i];
+			this.inventory[i] = null;
+			return item || null;
+		}
+
+		takeSelectionFromInventory(selector = '') {
+			const [givePropertyName, givePropertyValue] = selector.split(':');
+			const [index] = this.findInInventory(givePropertyName, givePropertyValue);
+			if (index === -1) return null;
+			return this.takeFromInventory(index);
+		}
+
+		findInInventory(propertyName, value) {
+			// const itemsInInv = this.inventory.filter((item) => item);
+			const matchTruthy = (typeof value === 'undefined');
+			let firstFoundIndex = -1;
+			const doesMatch = (item) => {
+				if (!item) return false;
+				if (matchTruthy) return Boolean(item[propertyName]);
+				return (item[propertyName] === value);
+			};
+			const matchingItems = this.inventory.filter((item, i) => {
+				const m = doesMatch(item);
+				if (m && firstFoundIndex === -1) firstFoundIndex = i;
+				return m;
+			});
+			return [firstFoundIndex, matchingItems];
 		}
 
 		applyForce(force = []) {
@@ -61986,8 +62140,8 @@
 			if (!this.physics) return 0;
 			const seconds = t / 1000;
 			const {
-				gravity = [0, 0, -4],
-				groundFriction = 0.95,
+				gravity = [0, 0, -6],
+				groundFriction = 0.94,
 				airFriction = 0.9999,
 				accelerationDecay = 0.9,
 			} = options;
@@ -62004,7 +62158,7 @@
 			this.acc = ArrayCoords.multiply(this.acc, accelerationDecay);
 			// Friction
 			let friction = (this.grounded) ? groundFriction : airFriction;
-			if (this.movementForce) friction = 1; // no friction if moving/walking
+			if (this.movementForce) friction = airFriction; // no friction if moving/walking
 			this.vel = ArrayCoords.multiply(this.vel, friction);
 			this.vel = [
 				(Math.abs(this.vel[X$2]) < 0.001) ? 0 : this.vel[X$2],
@@ -62157,7 +62311,7 @@
 			this.maxMouseWheel = maxMouseWheel;
 			this.loop = new Looper();
 			this.mouseWheelWatcher = new MouseWheelWatcher({ min: minMouseWheel, max: maxMouseWheel });
-			this.gameScene = new SceneClass();
+			this.gameScene = new SceneClass({ models: options.models });
 			this.world = new WorldClass();
 			this.interface = new InterfaceClass();
 			this.ActorClass = ActorClass;
@@ -62291,6 +62445,22 @@
 			// TODO: this could be made more efficient since we're checking distance twice
 			// (once in isItemInRangeInteractable, once in findNearest)
 			return GenericGame.findNearest(this.items, coords, filter);
+		}
+
+		removeLost(things = [], despawnCenter = [0, 0, 0]) {
+			things.forEach((thing) => {
+				if (thing.isCharacter || thing.important) return;
+				if (typeof thing.despawnRadius !== 'number') return;
+				const distance = ArrayCoords.getDistance(despawnCenter, thing.coords);
+				if (distance > this.despawnRadius) thing.remove = true;
+			});
+		}
+
+		despawn(despawnCenter) {
+			this.removeLost(this.actors, despawnCenter);
+			this.removeLost(this.items, despawnCenter);
+			this.cleanItems();
+			this.cleanActors();
 		}
 
 		static cleanRemoved(arr) {
@@ -62668,8 +62838,9 @@
 			this.chunkSizeMeters = 128;
 			this.chunkSize = this.unitsPerMeter * this.chunkSizeMeters; // 2560 units
 			this.halfChunkSize = this.chunkSize / 2;
-			this.terrainSegmentSize = 10; // (originally 10; 256 works for testing)
-			this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize; // 256
+			this.terrainSegmentSize = 32; // 10; // (originally 10; 256 works for testing)
+			this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize;
+			// Segements: 2560/10 = 256, 2560/20 = 128, 2560/32 = 80, 2560/256 = 10
 			// While the segments break up the chunk into various triangles, each side
 			// of the terrain has +1 vertex compared to the # of segments
 			this.terrainChunkVertexSize = this.terrainSegmentsPerChunk + 1;
@@ -62691,7 +62862,33 @@
 		}
 
 		calcTerrainHeight(xP, y) {
-			return 0;
+			// return 0;
+			const x = xP + 120;
+			const noiseScale = 0.002;
+			// const noiseScale = 0.0002;
+			const minHeight = 0;
+			const maxHeight = 1000;
+			// const delta = maxHeight - minHeight;
+			let h = 100;
+			// Add big heights
+			h += DinoWorld.calcNoiseHeight(x, y, 0.0002, 800);
+			h = clamp$2(h, minHeight, maxHeight);
+			// Pokey mountains
+			h += DinoWorld.calcNoiseHeight(x, y, 0.002, 600);
+			// const roll = DinoWorld.calcNoiseHeight(x, y, 0.00015, 1);
+			// if (roll)
+			h = clamp$2(h, minHeight, maxHeight);
+
+			// Add roughness
+			const roughness = (h <= 2) ? 20 : 50 * (h / maxHeight);
+			h += DinoWorld.calcNoiseHeight(x, y, 0.02, roughness);
+
+			// Add ripples (negative for erosion)
+			h -= 20 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+			h = clamp$2(h, minHeight, maxHeight);
+			// h += DinoWorld.calcNoiseHeight(x, y, 0.00021, 200);
+			// this.validateNumbers({ h, h2 });
+			return h;
 		}
 
 		getTerrainHeight(x, y) {
@@ -62787,8 +62984,8 @@
 			// await waitForImage(image);
 			// console.log(image.complete);
 
-			document.getElementById('map').innerHTML = '';
-			document.getElementById('map').appendChild(image);
+			// document.getElementById('map').innerHTML = '';
+			// document.getElementById('map').appendChild(image);
 			return {
 				color: (chunkCoords[X$1] - chunkCoords[Y$1] === 0) ? 0x55ffbb : 0x66eeaa,
 				textureImage: image,
@@ -62813,14 +63010,16 @@
 			return chunk;
 		}
 
-		makeTerrainChunks(coords) {
+		makeTerrainChunks(coords, chunkRadius = 1) {
 			if (!coords) throw new Error('Missing coords param');
 			const centerChunkCoords = this.getChunkCoords(coords);
 			// const centerChunk = this.addNewTerrainChunk(centerChunkCoords);
 			// return [centerChunk];
 			const chunks = [];
-			for (let x = -1; x <= 1; x += 1) {
-				for (let y = -1; y <= 1; y += 1) {
+			const MAX = Math.round(chunkRadius);
+			const MIN = -MAX;
+			for (let x = MIN; x <= MAX; x += 1) {
+				for (let y = MIN; y <= MAX; y += 1) {
 					const newChunkCoords = ArrayCoords.add(centerChunkCoords, [x, y, 0]);
 					const chunk = this.addNewTerrainChunk(newChunkCoords);
 					chunks.push(chunk);
@@ -62829,6 +63028,9 @@
 			return chunks;
 		}
 	}
+
+	const CLOSE_ENOUGH = 20; // 2m
+	const SLOW_DIST = 500; // 25m ~ 8 ft
 
 	class Actor extends Entity {
 		constructor(options = {}) {
@@ -62854,9 +63056,9 @@
 			this.applyForce([0, 0, 140000]);
 		}
 
-		walk(directionOffset = 0) {
+		walk(directionOffset = 0, multiplier = 1) {
 			// it feels good to walk in the air (a little bit at least)
-			const m = (this.grounded) ? 1 : 0.2;
+			const m = ((this.grounded) ? 1 : 0.2) * multiplier;
 			this.applyMovementForce(this.walkForce * m, directionOffset);
 		}
 
@@ -62898,12 +63100,12 @@
 
 		updateMovement(t) {
 			if (!this.mobile || !this.autonomous) return 0;
-			const CLOSE_ENOUGH = 40;
 			const distanceToTarget = ArrayCoords.getDistance(this.coords, this.moveTarget);
 			if (distanceToTarget < CLOSE_ENOUGH) return 0;
 			const maxTurnRadians = t * this.turnSpeed;
 			const remainderToTurn = this.turnToward(this.moveTarget, maxTurnRadians);
-			if (remainderToTurn < 0.2) this.walk();
+			const speedFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
+			if (remainderToTurn < 0.2) this.walk(0, speedFraction);
 		}
 
 		update(t, world) {
@@ -62945,30 +63147,56 @@
 		}
 
 		interact(who, amount = 0) {
-			if (!DinoItem.isItemInRangeInteractable(this, who.coords)) return 0;
+			if (!DinoItem.isItemInRangeInteractable(this, who.coords)) return [];
 			if (this.interactionEffort) {
 				this.interactionProgress += amount;
 				const percent = this.getInteractionPercent();
-				if (percent < 1) return percent;
+				if (percent < 1) return [];
 			}
 			// either no effort is needed, or we're done with the progress
 			if (!this.interactionResult) {
 				console.warn('No interaction result for item');
-				return 1;
+				return [];
 			}
-			Object.keys(this.interactionResult).forEach((resultKey) => {
+			const messages = Object.keys(this.interactionResult).reduce((messagesArr, resultKey) => {
 				if (resultKey === 'modify') {
 					const { modify } = this.interactionResult;
 					Object.keys(modify).forEach((propName) => {
 						this[propName] = modify[propName];
 					});
-				} else if (resultKey === 'pickUp' && this.interactionResult.pickUp) {
+				}
+				if (resultKey === 'pickUp' && this.interactionResult.pickUp) {
 					const added = who.addToInventory(this);
 					this.remove = added;
+					console.log(this, 'removed?', added);
+					if (added && this.inventoryDescription) {
+						messagesArr.push(
+							`You pick up the ${this.name}.
+						${this.inventoryDescription}`,
+						);
+					}
+				} else if (resultKey === 'give' && this.interactionResult.give) {
+					const item = who.takeSelectionFromInventory(this.interactionResult.give);
+					if (item) {
+						this.addToInventory(item);
+						messagesArr.push('You give an item...');
+					} else {
+						messagesArr.push('You do not have any items that can be used here.');
+					}
+				} else if (resultKey === 'repair' && this.interactionResult.repair) {
+					const item = who.takeSelectionFromInventory(this.interactionResult.repair);
+					if (item) {
+						// this.addToInventory(item);
+						this.damage -= 1;
+						messagesArr.push('You use an item to repair...');
+					} else {
+						messagesArr.push('You do not have any items that can be used to repair.');
+					}
 				}
 				// else -- things like spawning something, damage, effects
-			});
-			return 1;
+				return messagesArr;
+			}, []);
+			return messages;
 		}
 	}
 
@@ -63010,6 +63238,16 @@
 			elt.classList.add(HIDE_CLASS);
 		}
 
+		static capitalize(str) {
+			return str.charAt(0).toUpperCase() + str.slice(1);
+		}
+
+		static getItemName(item) {
+			let n = DinoInterface.capitalize(item.name) || 'Item';
+			if (item.damage) n += ` - Damaged (${item.damage})`;
+			return n;
+		}
+
 		hideLoading() {
 			DinoInterface.hide('#loading');
 		}
@@ -63020,7 +63258,7 @@
 				return;
 			}
 			DinoInterface.show('#interaction-details');
-			DinoInterface.setText('#interaction-target', item.name || 'Item');
+			DinoInterface.setText('#interaction-target', DinoInterface.getItemName(item));
 			let actionText = item.interactionAction || 'Interact';
 			const percent = item.getInteractionPercent();
 			if (percent < 1) actionText += ` ${Math.floor(percent * 100)}%`;
@@ -63043,16 +63281,111 @@
 		}
 	}
 
+	const defaultModel = {
+		castShadows: true,
+	};
+	const TECH_COLOR = '#c2b5a9';
+
+	var models = {
+		royalPalm: {
+			...defaultModel,
+			path: 'trees/RoyalPalmTreeGLB.glb',
+			scale: 6,
+			color: [0.3, 0.7, 0.3],
+		},
+		teleporter: {
+			path: 'tech/Turret_Teleporter.fbx',
+			scale: 1,
+			color: TECH_COLOR,
+		},
+		sputnik: {
+			path: 'tech/Sputnik.glb',
+			scale: 2,
+			color: TECH_COLOR,
+		},
+		gear: {
+			path: 'tech/Collectible_Gear.glb',
+			scale: 30,
+			color: TECH_COLOR,
+		},
+		// apatosaurus1: {
+		// 	path: 'dinos/converted/Apatosaurus.gltf',
+		// 	scale: 10,
+		// },
+		// apatosaurus2: {
+		// 	path: 'dinos/converted/Apatosaurus.glb',
+		// 	scale: 10,
+		// },
+		// tRex: {
+		// 	...defaultModel,
+		// 	path: 'dinos/converted/Trex.glb',
+		// 	scale: 10,
+		// 	color: [0.7, 0.2, 0.1],
+		// },
+		// diplodocus: {
+		// 	path: 'dinos/GLB/Diplodocus.glb',
+		// 	scale: 0.2,
+		// },
+		// steg: {
+		// 	path: 'dinos/GLB/steg.glb',
+		// 	scale: 10,
+		// },
+		// veloGlb: {
+		// 	...defaultModel,
+		// 	path: 'dinos/Exported/Velo.glb',
+		// 	scale: 10,
+		// 	color: [0.6, 0.2, 0.1],
+		// },
+		apat: {
+			...defaultModel,
+			path: 'dinos/FBX/Apatosaurus.fbx',
+			scale: 0.1,
+			color: [0.5, 0.5, 0.7],
+		},
+		para: {
+			...defaultModel,
+			path: 'dinos/FBX/Parasaurolophus.fbx',
+			scale: 0.1,
+			color: [0.3, 0.6, 0.6],
+		},
+		steg: {
+			...defaultModel,
+			path: 'dinos/FBX/Stegosaurus.fbx',
+			scale: 0.1,
+			color: [0.6, 0.6, 0.3],
+		},
+		trex: {
+			...defaultModel,
+			path: 'dinos/FBX/Trex.fbx',
+			scale: 0.1,
+			color: [0.65, 0.2, 0.1],
+		},
+		tric: {
+			...defaultModel,
+			path: 'dinos/FBX/Triceratops.fbx',
+			scale: 0.1,
+			color: [0.5, 0.7, 0.2],
+		},
+		velo: {
+			...defaultModel,
+			path: 'dinos/FBX/Velociraptor.fbx',
+			scale: 0.1,
+			color: [0.7, 0.5, 0.2],
+		},
+	};
+
 	const PART_SIZE = 20;
 	const PART = {
 		name: 'Time travel machine part',
 		randomAtRadius: 100,
 		size: PART_SIZE,
 		rooted: true,
-		interactionRange: PART_SIZE + 20,
+		timeTravelPart: true,
+		interactionRange: PART_SIZE + 30,
 		interactionAction: 'Dig',
 		interactionEffort: 6,
 		heightSizeOffset: 0,
+		inventoryDescription: 'This should be useful for rebuilding your time machine.',
 		interactionResult: {
 			modify: {
 				heightSizeOffset: 0.5,
@@ -63063,15 +63396,19 @@
 				interactionResult: { pickUp: true },
 			},
 		},
+		renderAs: 'model',
+		model: 'gear',
 	};
 	const PARTS = [
-		{ ...PART, randomAtRadius: 100, color: [1, 0.5, 0.5] },
-		{ ...PART, randomAtRadius: 200, color: [1, 1, 0] },
-		{ ...PART, randomAtRadius: 300, color: [1, 1, 1] },
-		{ ...PART, randomAtRadius: 400, color: [0, 1, 1] },
-		{ ...PART, randomAtRadius: 500, color: [0, 0, 1] },
-		{ ...PART, randomAtRadius: 600, color: [0, 1, 0] },
-		{ ...PART, randomAtRadius: 700, color: [1, 0, 1] },
+		{ ...PART, randomAtRadius: 300 },
+		{ ...PART, randomAtRadius: 400, model: 'sputnik' },
+		{ ...PART, randomAtRadius: 500 },
+		{ ...PART, randomAtRadius: 600 },
+		{ ...PART, randomAtRadius: 700 },
+		{ ...PART, randomAtRadius: 2000, model: 'sputnik' },
+		{ ...PART, randomAtRadius: 3000 },
+		{ ...PART, randomAtRadius: 4000, model: 'sputnik' },
+		{ ...PART, randomAtRadius: 5000 },
 	];
 	// Powers:
 	// - GPS Gravitation-wave Positioning System -- provides x,y,z coordinates
@@ -63086,8 +63423,40 @@
 	// - scanning visor --- provides a wireframe view with things highlighted
 	// - drone --- provides a mobile viewing system
 	// - laser gun
+	const PARTS_NEEDED = 8;
+	const ITEMS = [
+		...PARTS,
+		{
+			name: 'time machine',
+			isTimeMachine: true,
+			randomAtRadius: 10,
+			rooter: true,
+			size: 20,
+			heightSizeOffset: 0,
+			renderAs: 'model',
+			model: 'teleporter',
+			inventorySize: 100,
+			// color: [1, 1, 1],
+			interactionRange: 80,
+			interactionAction: 'Add part',
+			interactionEffort: 0,
+			damage: PARTS_NEEDED,
+			interactionResult: {
+				repair: 'timeTravelPart',
+			},
+		},
+	];
 
 	const { X, Y, Z } = ArrayCoords;
+
+	const DINO_MODEL_KEYS = [
+		'apat',
+		'para',
+		'steg',
+		'trex',
+		'tric',
+		'velo',
+	];
 
 	const states = {
 		loading: {
@@ -63125,6 +63494,7 @@
 	class DinoGame extends GenericGame {
 		constructor() {
 			super({
+				models,
 				states,
 				minMouseWheel: 0,
 				maxMouseWheel: 500,
@@ -63144,6 +63514,8 @@
 			// Max spawn distance should be somwhat similar to half the size of all the chunks being shown
 			this.spawnRadii = [this.spawnActorDistance, 3500];
 			this.despawnRadius = this.spawnRadii[1] * 1.5;
+			this.spawnDinos = true;
+			this.timeMachine = null;
 		}
 
 		handleCommand(command) {
@@ -63171,7 +63543,11 @@
 				if (commandWords[1] === 'nearest') {
 					const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
 					if (!iItem) return;
-					this.ItemClass.interact(iItem, mainCharacter, 1);
+					const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
+					if (messages) {
+						console.log('messages', messages);
+						// TODO: add messages to UI log queue
+					}
 					this.setHeightToTerrain(iItem, this.world);
 				}
 			} else if (firstCommand === 'jump') {
@@ -63189,11 +63565,11 @@
 
 		gameTick(t) {
 			super.gameTick(t);
-			if (this.tick % 300 === 0) ;
+			if (this.tick % 300 === 0 && this.spawnDinos) {
+				this.addNewDino();
+			}
 			// Clean items and actors to remove missing/dead
-			this.removeLostActors();
-			this.cleanItems();
-			this.cleanActors();
+			this.despawn(this.mainCharacter.coords);
 
 			// Handle camera position
 			const zoom = this.mouseWheelWatcher.percent * 100;
@@ -63203,7 +63579,8 @@
 
 			// Generate terrain
 			const { mainCharacter, actors } = this;
-			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords);
+			const chunkRadius = Math.min(0 + Math.floor(this.tick / 200), 3);
+			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 			// Update actors
 			actors.forEach((actor) => actor.update(t, this.world));
 			actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
@@ -63241,14 +63618,6 @@
 			};
 		}
 
-		removeLostActors() {
-			this.actors.forEach((actor) => {
-				if (actor.isCharacter || actor.important) return;
-				const distance = ArrayCoords.getDistance(this.mainCharacter.coords, actor.coords);
-				if (distance > this.despawnRadius) actor.remove = true;
-			});
-		}
-
 		addNewDino() {
 			const [minRadius, maxRadius] = this.spawnRadii;
 			const r = minRadius + Random.randomInt(maxRadius - minRadius);
@@ -63258,6 +63627,7 @@
 			const [distance] = this.findNearestActor(coords);
 			if (distance < this.spawnActorDistance) return null;
 			const randColor = () => (0.5 + (Random.random() * 0.5));
+			const model = Random.pick(DINO_MODEL_KEYS);
 			const dinoOpt = {
 				name: 'Dino',
 				autonomous: true,
@@ -63266,36 +63636,48 @@
 				size: 60,
 				color: [randColor(), randColor(), randColor()],
 				turnSpeed: TAU$1 / 3000,
-				mass: 1000,
+				mass: 10000,
 				// renderAs: 'sphere',
 				renderAs: 'model',
-				// model: 'apatosaurus',
-				model: 'diplodocus',
+				model,
 			};
 			const dino = this.addNewActor(dinoOpt);
 			dino.coords = coords;
-			console.log('Added dino', dino);
+			console.log('Added dino', dino, model);
 			return dino;
 		}
 
+		addNewTrees(n) {
+			for (let i = n; i > 0; i -= 1) this.addNewTree();
+		}
+
+		addNewTree() {
+			// TODO:
+			// Create random tree and find a location
+			// Add a despawnRadius
+			// Then also run this a few more times when a new chunk is loaded
+		}
+
 		buildWorld() {
-			PARTS.forEach((partData) => {
-				this.addNewItem(partData);
+			ITEMS.forEach((itemData) => {
+				this.addNewItem(itemData);
 			});
 			this.items.forEach((item) => {
 				if (item.rooted) {
 					this.setHeightToTerrain(item, this.world);
 				}
+				if (item.isTimeMachine) this.timeMachine = item;
 			});
+			this.addNewTrees(30);
 		}
 
 		async setup() {
 			const { spirit } = this.addNewPlayer();
 			this.mainCharacter = this.addNewCharacter(spirit);
-			this.mainCharacter.inventorySize = 10;
+			this.mainCharacter.inventorySize = PARTS.length;
 			this.mainCharacter.coords = [0, 0, 0];
 			this.mainCharacter.walkForce = 12000;
-			// this.buildWorld();
+			this.buildWorld();
 			const { gameScene } = this;
 			await gameScene.setup([0, 100, 100]);
 		}
@@ -63320,7 +63702,7 @@
 			// const testDino = this.addNewDino();
 			// testDino.autonomous = false;
 			// testDino.mobile = false;
-			// testDino.coords = [200, 200, 40];
+			// testDino.coords = [200, 0, 40];
 			// // testDino.physics = false;
 			// testDino.setFacing(0);
 			// window.d = testDino;
@@ -63331,32 +63713,47 @@
 
 	window.ArrayCoords = ArrayCoords;
 
-	const game = new DinoGame({
-		textures: {
+	function updateMaterial(obj) {
+		obj.material = new MeshStandardMaterial({
+			color: new Color(.5, .2, .1),
+		});
+		obj.needsUpdate = true;
+		window.render();
+	}
+	window.updateMaterial = updateMaterial;
 
-		},
-		sounds: {
+	let game = {};
 
-		},
-		prototypes: {
-			tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
-		},
-		terrainItems: {
+	{
+		game = new DinoGame({
+			textures: {
 
-		},
-		specialItems: {
+			},
+			sounds: {
 
-		},
-		actors: {
+			},
+			prototypes: {
+				tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
+			},
+			terrainItems: {
 
-		},
-	});
-	window.document.addEventListener('DOMContentLoaded', () => {
-		game.start();
-	});
-	window.game = game;
-	window.g = game;
+			},
+			specialItems: {
 
-	return game;
+			},
+			actors: {
+
+			},
+		});
+		window.document.addEventListener('DOMContentLoaded', () => {
+			game.start();
+		});
+		window.game = game;
+		window.g = game;
+	}
+
+	var game$1 = game;
+
+	return game$1;
 
 })();

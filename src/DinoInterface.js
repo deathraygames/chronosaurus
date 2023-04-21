@@ -36,6 +36,16 @@ class DinoInterface {
 		elt.classList.add(HIDE_CLASS);
 	}
 
+	static capitalize(str) {
+		return str.charAt(0).toUpperCase() + str.slice(1);
+	}
+
+	static getItemName(item) {
+		let n = DinoInterface.capitalize(item.name) || 'Item';
+		if (item.damage) n += ` - Damaged (${item.damage})`;
+		return n;
+	}
+
 	hideLoading() {
 		DinoInterface.hide('#loading');
 	}
@@ -46,7 +56,7 @@ class DinoInterface {
 			return;
 		}
 		DinoInterface.show('#interaction-details');
-		DinoInterface.setText('#interaction-target', item.name || 'Item');
+		DinoInterface.setText('#interaction-target', DinoInterface.getItemName(item));
 		let actionText = item.interactionAction || 'Interact';
 		const percent = item.getInteractionPercent();
 		if (percent < 1) actionText += ` ${Math.floor(percent * 100)}%`;

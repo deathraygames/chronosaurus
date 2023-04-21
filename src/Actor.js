@@ -1,6 +1,9 @@
 import { ArrayCoords, Random, TAU } from 'rocket-utility-belt';
 import Entity from './Entity.js';
 
+const CLOSE_ENOUGH = 20; // 2m
+const SLOW_DIST = 500; // 25m ~ 8 ft
+
 class Actor extends Entity {
 	constructor(options = {}) {
 		super(options);
@@ -25,9 +28,9 @@ class Actor extends Entity {
 		this.applyForce([0, 0, 140000]);
 	}
 
-	walk(directionOffset = 0) {
+	walk(directionOffset = 0, multiplier = 1) {
 		// it feels good to walk in the air (a little bit at least)
-		const m = (this.grounded) ? 1 : 0.2;
+		const m = ((this.grounded) ? 1 : 0.2) * multiplier;
 		this.applyMovementForce(this.walkForce * m, directionOffset);
 	}
 
@@ -69,12 +72,12 @@ class Actor extends Entity {
 
 	updateMovement(t) {
 		if (!this.mobile || !this.autonomous) return 0;
-		const CLOSE_ENOUGH = 40;
 		const distanceToTarget = ArrayCoords.getDistance(this.coords, this.moveTarget);
 		if (distanceToTarget < CLOSE_ENOUGH) return 0;
 		const maxTurnRadians = t * this.turnSpeed;
 		const remainderToTurn = this.turnToward(this.moveTarget, maxTurnRadians);
-		if (remainderToTurn < 0.2) this.walk();
+		const speedFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
+		if (remainderToTurn < 0.2) this.walk(0, speedFraction);
 	}
 
 	update(t, world) {

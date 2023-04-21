@@ -1,29 +1,36 @@
 import DinoGame from './DinoGame.js';
+import test from './test.js';
 
-const game = new DinoGame({
-	textures: {
+let game = {};
 
-	},
-	sounds: {
+if (true) {
+	game = new DinoGame({
+		textures: {
 
-	},
-	prototypes: {
-		tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
-	},
-	terrainItems: {
+		},
+		sounds: {
 
-	},
-	specialItems: {
+		},
+		prototypes: {
+			tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
+		},
+		terrainItems: {
 
-	},
-	actors: {
+		},
+		specialItems: {
 
-	},
-});
-window.document.addEventListener('DOMContentLoaded', () => {
-	game.start();
-});
-window.game = game;
-window.g = game;
+		},
+		actors: {
+
+		},
+	});
+	window.document.addEventListener('DOMContentLoaded', () => {
+		game.start();
+	});
+	window.game = game;
+	window.g = game;
+} else {
+	window.document.addEventListener('DOMContentLoaded', () => test());
+}
 
 export default game;
