@@ -75,6 +75,10 @@ class GenericGame extends StateCommander {
 		this.loop.set((t) => this.animationTick(t)).start();
 	}
 
+	stopAnimationGameLoop() {
+		this.loop.stop();
+	}
+
 	makePlayer() {
 		const playerId = Random.uniqueString();
 		const spiritId = Random.uniqueString();

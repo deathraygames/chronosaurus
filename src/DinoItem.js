@@ -72,7 +72,7 @@ class DinoItem extends Entity {
 				if (item) {
 					// this.addToInventory(item);
 					this.damage -= 1;
-					messagesArr.push('You use an item to repair...');
+					messagesArr.push(`You use an item to repair the ${this.name}`);
 				} else {
 					messagesArr.push('You do not have any items that can be used to repair.');
 				}

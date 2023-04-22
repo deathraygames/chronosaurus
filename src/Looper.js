@@ -4,6 +4,7 @@ class Looper {
 	constructor(a) {
 		this.loopHook = (typeof a === 'function') ? a : NOOP;
 		this.lastTime = performance.now();
+		this.isStopped = true;
 	}
 
 	set(fn) {
@@ -12,6 +13,7 @@ class Looper {
 	}
 
 	next() {
+		if (this.isStopped) return;
 		const now = performance.now();
 		const t = now - this.lastTime;
 		this.lastTime = now;
@@ -20,9 +22,14 @@ class Looper {
 	}
 
 	start() {
+		this.isStopped = false;
 		this.lastTime = performance.now();
 		this.next();
 		return this;
+	}
+
+	stop() {
+		this.isStopped = true;
 	}
 }
 

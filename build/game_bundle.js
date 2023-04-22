@@ -443,8 +443,8 @@
 			this.unlockEventName = options.unlockEventName || 'mousedown'; // contextmenu, click
 			this.lockEventName = options.lockEventName || 'mousedown'; // or click
 			this.clickTypes = ['click', 'mouseup', 'mousedown'];
-			this.lockButton = 3;
-			this.unlockButton = 3;
+			this.lockButton = 1;
+			this.unlockButton = 1;
 			this.handleLockedMouseMove = (event) => {
 				const x = event.movementX;
 				const y = event.movementY;
@@ -513,7 +513,9 @@
 			await document.exitPointerLock();
 		}
 
-		setup() {
+		setup(setupOptions = {}) {
+			if (setupOptions.selector) this.selector = setupOptions.selector;
+			// TODO: Also allow configuring other properties (like in constructor)
 			const elt = this.getElement();
 			this.doc.addEventListener('pointerlockchange', () => {
 				if (this.doc.pointerLockElement === elt) {
@@ -62180,6 +62182,7 @@
 		constructor(a) {
 			this.loopHook = (typeof a === 'function') ? a : NOOP;
 			this.lastTime = performance.now();
+			this.isStopped = true;
 		}
 
 		set(fn) {
@@ -62188,6 +62191,7 @@
 		}
 
 		next() {
+			if (this.isStopped) return;
 			const now = performance.now();
 			const t = now - this.lastTime;
 			this.lastTime = now;
@@ -62196,9 +62200,14 @@
 		}
 
 		start() {
+			this.isStopped = false;
 			this.lastTime = performance.now();
 			this.next();
 			return this;
+		}
+
+		stop() {
+			this.isStopped = true;
 		}
 	}
 
@@ -62356,6 +62365,10 @@
 
 		startAnimationGameLoop() {
 			this.loop.set((t) => this.animationTick(t)).start();
+		}
+
+		stopAnimationGameLoop() {
+			this.loop.stop();
 		}
 
 		makePlayer() {
@@ -63029,7 +63042,7 @@
 		}
 	}
 
-	const CLOSE_ENOUGH = 20; // 2m
+	const CLOSE_ENOUGH = 40; // 2m
 	const SLOW_DIST = 500; // 25m ~ 8 ft
 
 	class Actor extends Entity {
@@ -63047,8 +63060,9 @@
 				planning: 0,
 				//
 			};
+			this.maxWanderRange = 1000;
 			this.turnSpeed = TAU$1 / 1000; // one rotation in 1000 ms (1 second)
-			this.walkForce = this.walkForce || 1000;
+			this.walkForce = this.walkForce || 800;
 		}
 
 		jump() {
@@ -63090,10 +63104,10 @@
 			if (!this.autonomous) return 0;
 			if (this.cooldowns.planning) return 0;
 			if (this.wandering) {
-				const deltaX = Random.randomInt(1000) - Random.randomInt(1000);
-				const deltaY = Random.randomInt(1000) - Random.randomInt(1000);
+				const deltaX = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
+				const deltaY = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 				this.moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
-				this.heatUp('planning', 20);
+				this.heatUp('planning', 30);
 				// console.log(this.name, 'planning a wander');
 			}
 		}
@@ -63188,7 +63202,7 @@
 					if (item) {
 						// this.addToInventory(item);
 						this.damage -= 1;
-						messagesArr.push('You use an item to repair...');
+						messagesArr.push(`You use an item to repair the ${this.name}`);
 					} else {
 						messagesArr.push('You do not have any items that can be used to repair.');
 					}
@@ -63200,40 +63214,42 @@
 		}
 	}
 
-	const $ = (selector) => {
-		const elt = window.document.querySelector(selector);
-		if (!elt) console.warn('Could not find', selector);
-		return elt;
-	};
-
 	const SHOW_CLASS = 'ui-show';
 	const HIDE_CLASS = 'ui-hide';
 
 	class DinoInterface {
-		// constructor() {
-		// 	//
-		// }
+		constructor() {
+			this.log = [];
+			this.lastDisplayedLogLength = 0;
+			this.logShow = 3;
+		}
+
+		static $(selector) {
+			const elt = window.document.querySelector(selector);
+			if (!elt) console.warn('Could not find', selector);
+			return elt;
+		};
 
 		static setText(selector, text) {
-			const elt = $(selector);
+			const elt = DinoInterface.$(selector);
 			if (elt.innerText === text) return;
 			elt.innerText = text;
 		}
 
 		static setHtml(selector, html) {
-			const elt = $(selector);
+			const elt = DinoInterface.$(selector);
 			if (elt.innerHTML === html) return;
 			elt.innerHTML = html;
 		}
 
 		static show(selector) {
-			const elt = $(selector);
+			const elt = DinoInterface.$(selector);
 			elt.classList.remove(HIDE_CLASS);
 			elt.classList.add(SHOW_CLASS);
 		}
 
 		static hide(selector) {
-			const elt = $(selector);
+			const elt = DinoInterface.$(selector);
 			elt.classList.remove(SHOW_CLASS);
 			elt.classList.add(HIDE_CLASS);
 		}
@@ -63248,8 +63264,28 @@
 			return n;
 		}
 
-		hideLoading() {
-			DinoInterface.hide('#loading');
+		show(selector) { DinoInterface.show(selector); }
+
+		hide(selector) { DinoInterface.hide(selector); }
+
+		hideLoading() { DinoInterface.hide('#loading'); }
+
+		showWin() { DinoInterface.show('#win'); }
+
+		hideWin() { DinoInterface.hide('#win'); }
+
+		showMainMenu() { DinoInterface.show('#main-menu'); }
+
+		hideMainMenu() { DinoInterface.hide('#main-menu'); }
+
+		showHud() { DinoInterface.show('#hud'); }
+
+		hideHud() { DinoInterface.hide('#hud'); }
+
+		addToLog(messages) {
+			if (!messages || !messages.length) return;
+			if (messages instanceof Array) this.log = this.log.concat(messages);
+			else this.log.push(messages); // string hopefully
 		}
 
 		updateInteraction(item) {
@@ -63274,10 +63310,35 @@
 			DinoInterface.setHtml('#debug', html);
 		}
 
+		updateScanner(scannerItemPercentages = []) {
+			const numbers = scannerItemPercentages
+				.map((n) => Math.max(1, Math.round(10000 * n) / 100)) // No less than 1%, and round to .00
+				.sort((a, b) => (a - b));
+			const listItems = numbers.map((n) => `<li class="scan-bar" style="height: ${n}%;"><span>${n}</span></li>`);
+			DinoInterface.setHtml('#scans', listItems.join(''));
+		}
+
+		updateLog() {
+			if (this.log.length === this.lastDisplayedLogLength) return; // No changes
+			this.lastDisplayedLogLength = this.log.length;
+			const latest = this.log.slice(this.logShow * -1);
+			const listItems = latest.map((message) => `<li>${message}</li>`);
+			DinoInterface.setHtml('#log-list', listItems.join(''));
+		}
+
+		updateInventory(inventory = []) {
+			const listItems = inventory.map((item) => `<li class="${(!item) ? 'inv-empty' : ''}">${item}</li>`);
+			DinoInterface.setHtml('#inv-list', listItems.join(''));
+		}
+
 		render(interfaceUpdates = {}) {
-			const { item, actor } = interfaceUpdates;
-			this.updateDebug(actor);
+			const { item, actor, scannerItemPercentages, inventory } = interfaceUpdates;
+			this.updateLog();
+			// this.updateDebug(actor);
 			this.updateInteraction(item);
+			this.updateScanner(scannerItemPercentages);
+			this.updateLog();
+			this.updateInventory(inventory);
 		}
 	}
 
@@ -63305,7 +63366,7 @@
 		},
 		gear: {
 			path: 'tech/Collectible_Gear.glb',
-			scale: 30,
+			scale: 40,
 			color: TECH_COLOR,
 		},
 		// apatosaurus1: {
@@ -63374,12 +63435,94 @@
 		},
 	};
 
+	const states = {
+		loading: {
+			start: async (game) => {
+				game.interface.hideWin();
+				await game.setup();
+			},
+			stop: (game) => {
+				game.interface.hideLoading();
+			},
+		},
+		mainMenu: {
+			keyboardMapping: {
+				Enter: 'start',
+			},
+			async start(game) {
+				game.interface.hideWin();
+				game.interface.hideLoading();
+				game.interface.showMainMenu();
+				game.interface.hide('#menu');
+				game.interface.show('#main-menu-loading');
+				await game.setup();
+				game.interface.hide('#main-menu-loading');
+				game.interface.show('#menu');
+				game.setupMainMenuEvents();
+			},
+			stop(game) {
+				game.cleanUpMainMenuEvents();
+				game.interface.hideMainMenu();
+			},
+		},
+		intro: {
+			start(game) {
+				game.interface.show('#intro');
+				setTimeout(() => game.transition('explore'), 4000);
+			},
+			stop(game) {
+				game.interface.hide('#intro');
+			},
+		},
+		explore: {
+			keyboardMapping: {
+				w: 'move forward',
+				s: 'move back',
+				a: 'move left',
+				d: 'move right',
+				z: 'turn left',
+				x: 'turn right',
+				e: 'interact nearest',
+				' ': 'jump',
+			},
+			start(game) {
+				game.interface.showHud();
+				game.setupMouseMove();
+				game.startAnimationGameLoop();
+				game.interface.addToLog([
+					'It looks like your time machine broke apart, and pieces are strewn across this strange landscape.',
+					'((Click screen to enable/disable mouse look))',
+				]);
+			},
+			stop(game) {
+				game.interface.hideHud();
+				game.stopAnimationGameLoop();
+				game.cleanUpMouseMove();
+			},
+		},
+		inventory: {
+
+		},
+		dead: {
+
+		},
+		win: {
+			start: async (game) => {
+				game.interface.showWin();
+			},
+			stop: (game) => {
+				game.interface.hideWin();
+			},
+		},
+	};
+
 	const PART_SIZE = 20;
 	const PART = {
 		name: 'Time travel machine part',
 		randomAtRadius: 100,
 		size: PART_SIZE,
 		rooted: true,
+		scannable: true,
 		timeTravelPart: true,
 		interactionRange: PART_SIZE + 30,
 		interactionAction: 'Dig',
@@ -63430,7 +63573,8 @@
 			name: 'time machine',
 			isTimeMachine: true,
 			randomAtRadius: 10,
-			rooter: true,
+			rooted: true,
+			scannable: true, 
 			size: 20,
 			heightSizeOffset: 0,
 			renderAs: 'model',
@@ -63457,39 +63601,6 @@
 		'tric',
 		'velo',
 	];
-
-	const states = {
-		loading: {
-			start: async (game) => {
-				await game.setup();
-			},
-			stop: (game) => {
-				game.interface.hideLoading();
-			},
-		},
-		home: {
-			keyboardMapping: {
-				Enter: 'start',
-			},
-		},
-		intro: {
-
-		},
-		explore: {
-			keyboardMapping: {
-				w: 'move forward',
-				s: 'move back',
-				a: 'move left',
-				d: 'move right',
-				z: 'turn left',
-				x: 'turn right',
-				e: 'interact nearest',
-				' ': 'jump',
-			},
-		},
-		inventory: {},
-		dead: {},
-	};
 
 	class DinoGame extends GenericGame {
 		constructor() {
@@ -63544,10 +63655,7 @@
 					const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
 					if (!iItem) return;
 					const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
-					if (messages) {
-						console.log('messages', messages);
-						// TODO: add messages to UI log queue
-					}
+					if (messages) this.interface.addToLog(messages);
 					this.setHeightToTerrain(iItem, this.world);
 				}
 			} else if (firstCommand === 'jump') {
@@ -63563,8 +63671,17 @@
 			entity.setGrounded(grounded, h);
 		}
 
+		checkWin() {
+			const win = this.timeMachine.damage === 0;
+			if (win) this.transition('win');
+			return win;
+		}
+
 		gameTick(t) {
 			super.gameTick(t);
+
+			if (this.checkWin()) return { terrainChunks: [] };
+
 			if (this.tick % 300 === 0 && this.spawnDinos) {
 				this.addNewDino();
 			}
@@ -63579,12 +63696,21 @@
 
 			// Generate terrain
 			const { mainCharacter, actors } = this;
-			const chunkRadius = Math.min(0 + Math.floor(this.tick / 200), 3);
+			const chunkRadius = Math.min(0 + Math.floor(this.tick / 50), 3);
 			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 			// Update actors
 			actors.forEach((actor) => actor.update(t, this.world));
 			actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
 			return { terrainChunks };
+		}
+
+		calcScannableItemPercentages() {
+			const { coords } = this.mainCharacter;
+			const MAX_SCAN = 5000;
+			return this.items.filter((item) => item.scannable).map((item) => {
+				const dist = ArrayCoords.getDistance(coords, item.coords);
+				return Math.max(1 - (dist / MAX_SCAN), 0);
+			});
 		}
 
 		assembleRenderData(gameTickData = {}) { // You should overwrite this method
@@ -63608,9 +63734,13 @@
 				entities: [...actors, ...items],
 				clearColor: [0.5, 0.75, 1],
 			};
+			const { inventory } = mainCharacter;
+			const scannerItemPercentages = this.calcScannableItemPercentages();
 			const interfaceUpdates = {
 				actor: mainCharacter,
 				item: iItem,
+				scannerItemPercentages,
+				inventory,
 			};
 			return {
 				sceneUpdateOptions,
@@ -63682,19 +63812,41 @@
 			await gameScene.setup([0, 100, 100]);
 		}
 
-		async start() {
-			await this.transition('loading');
-			await this.transition('home');
-			// this.transition('intro');
-			await this.transition('explore');
+		setupMouseMove() {
+			this.mouseHandler = ({ x, y }) => {
+				this.mainCharacter.turn(-x * 0.001);
+				// this.cameraPosition[X] += x * 1;
+				// this.cameraPosition[Y] += y * 1;
+				this.cameraVerticalRotation += y * -0.001;
+			};
 			this.pointerLocker
-				.setup() // Needs to happen after the canvas is created
-				.on('lockedMouseMove', ({ x, y }) => {
-					this.mainCharacter.turn(-x * 0.001);
-					// this.cameraPosition[X] += x * 1;
-					// this.cameraPosition[Y] += y * 1;
-					this.cameraVerticalRotation += y * -0.001;
-				});
+				.setup({ selector: '#hud' }) // Needs to happen after the canvas is created
+				.on('lockedMouseMove', this.mouseHandler);
+		}
+
+		cleanUpMouseMove() {
+			this.pointerLocker.unlock();
+			this.pointerLocker.off('lockedMouseMove', this.mouseHandler);
+		}
+
+		setupMainMenuEvents() {
+			this.startButtonHandler = () => {
+				this.transition('intro');
+			};
+			DinoInterface.$('#start-game-button').addEventListener('click', this.startButtonHandler);
+		}
+
+		cleanUpMainMenuEvents() {
+			DinoInterface.$('#start-game-button').removeEventListener('click', this.startButtonHandler);
+		}
+
+		async start() {
+			// await this.transition('loading');
+			await this.transition('mainMenu');
+			// this.transition('intro');
+			// await this.transition('explore');
+
+			// await this.transition('win');
 			// gameScene.addBox();
 			// gameScene.addBox();
 			// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
@@ -63707,7 +63859,7 @@
 			// testDino.setFacing(0);
 			// window.d = testDino;
 
-			this.startAnimationGameLoop();
+			// this.startAnimationGameLoop();
 		}
 	}
 

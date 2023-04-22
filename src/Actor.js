@@ -1,7 +1,7 @@
 import { ArrayCoords, Random, TAU } from 'rocket-utility-belt';
 import Entity from './Entity.js';
 
-const CLOSE_ENOUGH = 20; // 2m
+const CLOSE_ENOUGH = 40; // 2m
 const SLOW_DIST = 500; // 25m ~ 8 ft
 
 class Actor extends Entity {
@@ -19,8 +19,9 @@ class Actor extends Entity {
 			planning: 0,
 			//
 		};
+		this.maxWanderRange = 1000;
 		this.turnSpeed = TAU / 1000; // one rotation in 1000 ms (1 second)
-		this.walkForce = this.walkForce || 1000;
+		this.walkForce = this.walkForce || 800;
 	}
 
 	jump() {
@@ -62,10 +63,10 @@ class Actor extends Entity {
 		if (!this.autonomous) return 0;
 		if (this.cooldowns.planning) return 0;
 		if (this.wandering) {
-			const deltaX = Random.randomInt(1000) - Random.randomInt(1000);
-			const deltaY = Random.randomInt(1000) - Random.randomInt(1000);
+			const deltaX = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
+			const deltaY = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 			this.moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
-			this.heatUp('planning', 20);
+			this.heatUp('planning', 30);
 			// console.log(this.name, 'planning a wander');
 		}
 	}

@@ -6,6 +6,10 @@
 	<meta name="description" content="">
 	<meta name="author" content="Luke Nickerson">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Acme&family=Arvo&display=swap" rel="stylesheet">
+	<link href="./styles/vortex-tunnel.css" rel="stylesheet" />
 	<link href="./styles/saur.css" rel="stylesheet" />
 	<link rel="icon" type="image/png" sizes="32x32" href="./images/favicon-32x32.png">
 	<link rel="icon" type="image/png" sizes="16x16" href="./images/favicon-16x16.png">
@@ -14,21 +18,158 @@
 	<main id="main">
 		<div id="map"></div>
 		<!-- <img src="./images/BritanniaHeightMap2.jpg" id="x" style="width: 100px" /> -->
-		<div id="interaction">
-			<div id="crosshairs" class="crosshairs-horizontal">
-				<div class="crosshairs-vertical"></div>
+		<div id="hud" class="full-screen ui-hide">
+			<div class="hud-row">
+				<div>
+					<!-- put AI above here -->					
+					<div id="log">
+						<!-- [J] -->Log
+						<ul id="log-list"></ul>
+					</div>
+				</div>
+				<div id="scanner">
+					<ul id="scans"></ul>
+				</div>
 			</div>
-			<div id="interaction-details" class="ui-hide">
-				<div id="interaction-target"><!-- Item --></div>
-				<div id="interaction-action">
-					[E]
-					<!-- [E] Dig -->
-					<span id="interaction-action-name"></span>
+			<div class="hud-row">
+				<!-- leave empty? -->
+				<div id="interaction">
+					<div id="crosshairs" class="crosshairs-horizontal">
+						<div class="crosshairs-vertical"></div>
+					</div>
+					<div id="interaction-details" class="ui-hide">
+						<div id="interaction-target"><!-- Item --></div>
+						<div id="interaction-action">
+							[E]
+							<!-- [E] Dig -->
+							<span id="interaction-action-name"></span>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="hud-row">
+				<div>
+					<!-- Stats -->
+				</div>
+				<div id="inv">
+					<ul id="inv-list"></ul>
 				</div>
 			</div>
 		</div>
 		<div id="debug"></div>
-		<div id="loading">
+		<div id="win" class="full-screen ui-hide">
+			<div class="vortex">
+				<div class="tunnel">
+				</div>
+				<div class="tunnel">
+				</div>
+				<div class="tunnel ring">
+				</div>
+				<div class="tunnel ring">
+				</div>
+			</div>
+			<div class="win-conclusion">
+				<h1>You Travel Back to Your Time</h1>
+				<p>... To Be Continued?</p>
+				<div class="clock">
+					<div class="clock-text">You Win</div>
+					<div class="clock-second-hand"></div>
+					<div class="clock-minute-hand"></div>
+					<div class="clock-hour-hand"></div>
+				</div>
+			</div>
+			<div class="win-next">
+				<p>
+					Congratulations! You've won the game.
+					To play again you can refresh the page.
+				</p>
+				<p>We'd love to hear your feedback:</p>
+				<ul>
+					<li><a href="https://mastodon.gamedev.place/@deathray">@deathray on Mastodon.gamedev.place</a></li>
+					<li><a href="https://deathray.itch.io/">https://deathray.itch.io/</a></li>
+				</ul>
+				<p>
+					What did you love? What did you hate?
+					Do you want to see the game or game engine developed more?
+				</p>
+			</div>
+		</div>
+		<article id="main-menu" class="full-screen">
+			<div class="main-menu-background full-screen">
+
+			</div>
+			<div class="main-menu-content full-screen">
+				<header>
+					<h1 class="title"><span class="title-chrono">Chrono</span><span class="title-saur">saur</span>🦕</h1>
+				</header>
+				<div class="main-menu-row">
+					<section class="credits">
+						<h1>Credits</h1>
+						<p>
+							Code, Game design, etc. by Luke
+							<br>(Deathray)
+						</p>
+						<p>
+							Music by Elijah?
+						</p>
+						<p>
+							3D Models by
+							...(fill this in)
+						</p>
+						<p>
+							Made in JavaScript, CSS, HTML, using Three.js and Rocket-boots
+						</p>
+					</section>
+					<section id="menu">
+						<button type="button" id="start-game-button">⏲ Enter the Time Machine</button>
+						<div>
+							<input type="checkbox" checked="checked" id="music-checkbox" />
+							<label for="music-checkbox">Music</label>
+						</div>
+						<div>
+							<input type="checkbox" checked="checked" id="sound-fx-checkbox" />
+							<label for="sound-fx-checkbox">Sound Effects</label>
+						</div>
+					</section>
+					<div id="main-menu-loading" class="full-screen">
+						<div class="clock">
+							<div class="clock-text">Loading...</div>
+							<div class="clock-second-hand"></div>
+							<div class="clock-minute-hand"></div>
+							<div class="clock-hour-hand"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</article>
+		<div id="intro" class="full-screen ui-hide">
+			<div class="vortex">
+				<div class="tunnel">
+				</div>
+				<div class="tunnel">
+				</div>
+				<div class="tunnel ring">
+				</div>
+				<div class="tunnel ring">
+				</div>
+			</div>
+			<div class="intro-story">
+				<p>
+					You enter your time machine...
+				</p>
+				<p>
+					To go back and make things better...
+				</p>
+				<p>
+					But something's gone wrong...
+				</p>
+				<p>
+					You're going too far back,
+					<br />and the machine rumbles...
+				</p>
+			</div>
+		</div>
+		<div id="loading" class="full-screen">
 			<div class="clock">
 				<div class="clock-text">Loading...</div>
 				<div class="clock-second-hand"></div>

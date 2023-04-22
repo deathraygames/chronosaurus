@@ -8,6 +8,7 @@ import Actor from './Actor.js';
 import DinoItem from './DinoItem.js';
 import DinoInterface from './DinoInterface.js';
 import models from './models.js';
+import states from './states.js';
 
 const PART_SIZE = 20;
 const PART = {
@@ -15,6 +16,7 @@ const PART = {
 	randomAtRadius: 100,
 	size: PART_SIZE,
 	rooted: true,
+	scannable: true,
 	timeTravelPart: true,
 	interactionRange: PART_SIZE + 30,
 	interactionAction: 'Dig',
@@ -65,7 +67,8 @@ const ITEMS = [
 		name: 'time machine',
 		isTimeMachine: true,
 		randomAtRadius: 10,
-		rooter: true,
+		rooted: true,
+		scannable: true, 
 		size: 20,
 		heightSizeOffset: 0,
 		renderAs: 'model',
@@ -92,39 +95,6 @@ const DINO_MODEL_KEYS = [
 	'tric',
 	'velo',
 ];
-
-const states = {
-	loading: {
-		start: async (game) => {
-			await game.setup();
-		},
-		stop: (game) => {
-			game.interface.hideLoading();
-		},
-	},
-	home: {
-		keyboardMapping: {
-			Enter: 'start',
-		},
-	},
-	intro: {
-
-	},
-	explore: {
-		keyboardMapping: {
-			w: 'move forward',
-			s: 'move back',
-			a: 'move left',
-			d: 'move right',
-			z: 'turn left',
-			x: 'turn right',
-			e: 'interact nearest',
-			' ': 'jump',
-		},
-	},
-	inventory: {},
-	dead: {},
-};
 
 class DinoGame extends GenericGame {
 	constructor() {
@@ -179,10 +149,7 @@ class DinoGame extends GenericGame {
 				const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
 				if (!iItem) return;
 				const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
-				if (messages) {
-					console.log('messages', messages);
-					// TODO: add messages to UI log queue
-				}
+				if (messages) this.interface.addToLog(messages);
 				this.setHeightToTerrain(iItem, this.world);
 			}
 		} else if (firstCommand === 'jump') {
@@ -198,8 +165,17 @@ class DinoGame extends GenericGame {
 		entity.setGrounded(grounded, h);
 	}
 
+	checkWin() {
+		const win = this.timeMachine.damage === 0;
+		if (win) this.transition('win');
+		return win;
+	}
+
 	gameTick(t) {
 		super.gameTick(t);
+
+		if (this.checkWin()) return { terrainChunks: [] };
+
 		if (this.tick % 300 === 0 && this.spawnDinos) {
 			this.addNewDino();
 		}
@@ -214,12 +190,21 @@ class DinoGame extends GenericGame {
 
 		// Generate terrain
 		const { mainCharacter, actors } = this;
-		const chunkRadius = Math.min(0 + Math.floor(this.tick / 200), 3);
+		const chunkRadius = Math.min(0 + Math.floor(this.tick / 50), 3);
 		const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 		// Update actors
 		actors.forEach((actor) => actor.update(t, this.world));
 		actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
 		return { terrainChunks };
+	}
+
+	calcScannableItemPercentages() {
+		const { coords } = this.mainCharacter;
+		const MAX_SCAN = 5000;
+		return this.items.filter((item) => item.scannable).map((item) => {
+			const dist = ArrayCoords.getDistance(coords, item.coords);
+			return Math.max(1 - (dist / MAX_SCAN), 0);
+		});
 	}
 
 	assembleRenderData(gameTickData = {}) { // You should overwrite this method
@@ -243,9 +228,13 @@ class DinoGame extends GenericGame {
 			entities: [...actors, ...items],
 			clearColor: [0.5, 0.75, 1],
 		};
+		const { inventory } = mainCharacter;
+		const scannerItemPercentages = this.calcScannableItemPercentages();
 		const interfaceUpdates = {
 			actor: mainCharacter,
 			item: iItem,
+			scannerItemPercentages,
+			inventory,
 		};
 		return {
 			sceneUpdateOptions,
@@ -317,19 +306,41 @@ class DinoGame extends GenericGame {
 		await gameScene.setup([0, 100, 100]);
 	}
 
-	async start() {
-		await this.transition('loading');
-		await this.transition('home');
-		// this.transition('intro');
-		await this.transition('explore');
+	setupMouseMove() {
+		this.mouseHandler = ({ x, y }) => {
+			this.mainCharacter.turn(-x * 0.001);
+			// this.cameraPosition[X] += x * 1;
+			// this.cameraPosition[Y] += y * 1;
+			this.cameraVerticalRotation += y * -0.001;
+		};
 		this.pointerLocker
-			.setup() // Needs to happen after the canvas is created
-			.on('lockedMouseMove', ({ x, y }) => {
-				this.mainCharacter.turn(-x * 0.001);
-				// this.cameraPosition[X] += x * 1;
-				// this.cameraPosition[Y] += y * 1;
-				this.cameraVerticalRotation += y * -0.001;
-			});
+			.setup({ selector: '#hud' }) // Needs to happen after the canvas is created
+			.on('lockedMouseMove', this.mouseHandler);
+	}
+
+	cleanUpMouseMove() {
+		this.pointerLocker.unlock();
+		this.pointerLocker.off('lockedMouseMove', this.mouseHandler);
+	}
+
+	setupMainMenuEvents() {
+		this.startButtonHandler = () => {
+			this.transition('intro');
+		};
+		DinoInterface.$('#start-game-button').addEventListener('click', this.startButtonHandler);
+	}
+
+	cleanUpMainMenuEvents() {
+		DinoInterface.$('#start-game-button').removeEventListener('click', this.startButtonHandler);
+	}
+
+	async start() {
+		// await this.transition('loading');
+		await this.transition('mainMenu');
+		// this.transition('intro');
+		// await this.transition('explore');
+
+		// await this.transition('win');
 		// gameScene.addBox();
 		// gameScene.addBox();
 		// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
@@ -342,7 +353,7 @@ class DinoGame extends GenericGame {
 		// testDino.setFacing(0);
 		// window.d = testDino;
 
-		this.startAnimationGameLoop();
+		// this.startAnimationGameLoop();
 	}
 }
 

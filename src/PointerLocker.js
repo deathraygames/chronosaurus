@@ -7,8 +7,8 @@ class PointerLocker extends Observer {
 		this.unlockEventName = options.unlockEventName || 'mousedown'; // contextmenu, click
 		this.lockEventName = options.lockEventName || 'mousedown'; // or click
 		this.clickTypes = ['click', 'mouseup', 'mousedown'];
-		this.lockButton = 3;
-		this.unlockButton = 3;
+		this.lockButton = 1;
+		this.unlockButton = 1;
 		this.handleLockedMouseMove = (event) => {
 			const x = event.movementX;
 			const y = event.movementY;
@@ -77,7 +77,9 @@ class PointerLocker extends Observer {
 		await document.exitPointerLock();
 	}
 
-	setup() {
+	setup(setupOptions = {}) {
+		if (setupOptions.selector) this.selector = setupOptions.selector;
+		// TODO: Also allow configuring other properties (like in constructor)
 		const elt = this.getElement();
 		this.doc.addEventListener('pointerlockchange', () => {
 			if (this.doc.pointerLockElement === elt) {
