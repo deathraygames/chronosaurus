@@ -22,7 +22,7 @@ export default {
 	},
 	gear: {
 		path: 'tech/Collectible_Gear.glb',
-		scale: 30,
+		scale: 40,
 		color: TECH_COLOR,
 	},
 	// apatosaurus1: {
