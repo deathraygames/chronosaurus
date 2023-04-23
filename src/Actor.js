@@ -1,4 +1,4 @@
-import { ArrayCoords, Random, TAU } from 'rocket-utility-belt';
+import { ArrayCoords, Random, TAU, Pool } from 'rocket-utility-belt';
 import Entity from './Entity.js';
 
 const CLOSE_ENOUGH = 40; // 2m
@@ -11,6 +11,7 @@ class Actor extends Entity {
 		this.mobile = true;
 		this.physics = true;
 		this.mass = 60; // kg
+		this.stamina = new Pool(50, 50);
 		this.emotions = [];
 		this.spiritId = options.spiritId;
 		this.isActor = true;
@@ -25,8 +26,9 @@ class Actor extends Entity {
 	}
 
 	jump() {
-		if (!this.grounded) return;
+		if (!this.grounded) return false;
 		this.applyForce([0, 0, 140000]);
+		return true;
 	}
 
 	walk(directionOffset = 0, multiplier = 1) {

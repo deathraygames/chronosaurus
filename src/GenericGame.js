@@ -1,6 +1,7 @@
 /* eslint-disable class-methods-use-this */
 import MouseWheelWatcher from 'rocket-boots-three-toolbox/src/MouseWheelWatcher.js';
 import { Random, ArrayCoords, clamp } from 'rocket-utility-belt';
+import { SoundController } from 'sound-controller';
 
 import Entity from './Entity.js';
 import Looper from './Looper.js';
@@ -19,14 +20,18 @@ class GenericGame extends StateCommander {
 			InterfaceClass, // required
 			ActorClass = Entity, // recommended
 			ItemClass = Entity, // recommended
+			SoundControllerClass = SoundController, // recommended
 			states, // recommended
 			minMouseWheel = -100,
 			maxMouseWheel = 100,
+			sounds = {},
+			music = {},
 		} = options;
 		super({ states });
 		this.minMouseWheel = minMouseWheel;
 		this.maxMouseWheel = maxMouseWheel;
 		this.loop = new Looper();
+		this.sounds = new SoundControllerClass(sounds, music);
 		this.mouseWheelWatcher = new MouseWheelWatcher({ min: minMouseWheel, max: maxMouseWheel });
 		this.gameScene = new SceneClass({ models: options.models });
 		this.world = new WorldClass();

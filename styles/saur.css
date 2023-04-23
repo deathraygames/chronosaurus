@@ -7,6 +7,7 @@ body {
 
 h1 {
 	font-family: 'Acme', sans-serif;
+	margin: 0;
 }
 
 button {
@@ -16,6 +17,19 @@ button {
 }
 button:active {
 	transform: scale(0.95);
+}
+
+a,
+a:visited {
+	color: #99d4e6;
+}
+
+label {
+	padding: 1em 0.5em;
+}
+label[for]:hover {
+	border-radius: 0.2em;
+	background: rgba(0, 0, 0, 0.2);
 }
 
 .ui-show,
@@ -168,8 +182,8 @@ button:active {
 }
 #win .vortex {
 	z-index: 1;
-	width: 200vmin;
-	height: 200vmin;
+	width: 220vmin;
+	height: 220vmin;
 }
 #win.ui-show {
 	animation-iteration-count: 1;
@@ -302,6 +316,9 @@ button:active {
 	align-content: stretch;
 	gap: 1vmin;
 	padding: 1vmin;
+	--hud-color: white;
+	color: var(--hud-color);
+	opacity: 0.9;
 }
 .hud-row {
 	display: flex;
@@ -329,7 +346,7 @@ button:active {
 	display: inline-block;
 	margin: 0 0.25em;
 	width: 0.4vmin;
-	background: white;
+	background: var(--hud-color);
 }
 #scans > li > span {
 	display: none;
@@ -459,6 +476,7 @@ button:active {
 	padding-bottom: 20vmin;
 	max-width: 20em;
 }
+
 
 .main-menu-content button {
 	font-size: 120%;

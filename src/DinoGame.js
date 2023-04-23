@@ -9,6 +9,7 @@ import DinoItem from './DinoItem.js';
 import DinoInterface from './DinoInterface.js';
 import models from './models.js';
 import states from './states.js';
+import { sounds, music } from './soundsAndMusic.js';
 
 const PART_SIZE = 20;
 const PART = {
@@ -60,7 +61,7 @@ const PARTS = [
 // - scanning visor --- provides a wireframe view with things highlighted
 // - drone --- provides a mobile viewing system
 // - laser gun
-const PARTS_NEEDED = 8;
+const PARTS_NEEDED = 1;
 const ITEMS = [
 	...PARTS,
 	{
@@ -68,7 +69,7 @@ const ITEMS = [
 		isTimeMachine: true,
 		randomAtRadius: 10,
 		rooted: true,
-		scannable: true, 
+		scannable: true,
 		size: 20,
 		heightSizeOffset: 0,
 		renderAs: 'model',
@@ -96,11 +97,15 @@ const DINO_MODEL_KEYS = [
 	'velo',
 ];
 
+
+
 class DinoGame extends GenericGame {
 	constructor() {
 		super({
 			models,
 			states,
+			sounds,
+			music,
 			minMouseWheel: 0,
 			maxMouseWheel: 500,
 			SceneClass: DinoScene,
@@ -108,6 +113,7 @@ class DinoGame extends GenericGame {
 			WorldClass: DinoWorld,
 			ItemClass: DinoItem,
 			InterfaceClass: DinoInterface,
+			// SoundControllerClass: SoundController,
 		});
 		this.pointerLocker = new PointerLocker();
 		this.cameraPosition = [0, 0, 0];
@@ -140,6 +146,7 @@ class DinoGame extends GenericGame {
 			// const y = spd * Math.cos(angleOfMovement);
 			// mainCharacter.move([x, y, 0]);
 			// this.cameraCoords.position
+			if (this.mainCharacter.grounded) this.sounds.play('footsteps', { random: 0.1 });
 		} else if (firstCommand === 'turn') {
 			let turnAmount = TAU / 50;
 			if (commandWords[1] === 'left') turnAmount *= -1;
@@ -148,12 +155,14 @@ class DinoGame extends GenericGame {
 			if (commandWords[1] === 'nearest') {
 				const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
 				if (!iItem) return;
+				this.sounds.play('collect');
 				const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
 				if (messages) this.interface.addToLog(messages);
 				this.setHeightToTerrain(iItem, this.world);
 			}
 		} else if (firstCommand === 'jump') {
-			mainCharacter.jump();
+			const didJump = mainCharacter.jump();
+			if (didJump) this.sounds.play('jump');
 		}
 	}
 
@@ -162,6 +171,8 @@ class DinoGame extends GenericGame {
 		let h = world.getTerrainHeight(x, y);
 		h += (entity.heightSizeOffset * entity.size);
 		const grounded = (z <= h);
+		if (grounded && !entity.grounded && entity.isCharacter) this.sounds.play('footsteps');
+		// TODO: play 'land' sound instead if velocity downward is high
 		entity.setGrounded(grounded, h);
 	}
 
@@ -328,14 +339,29 @@ class DinoGame extends GenericGame {
 			this.transition('intro');
 		};
 		DinoInterface.$('#start-game-button').addEventListener('click', this.startButtonHandler);
+		const musicCheckbox = DinoInterface.$('#music-checkbox');
+		this.toggleMusicHandler = () => {
+			const { checked } = musicCheckbox;
+			this.sounds.turnMusicOn(checked);
+		};
+		musicCheckbox.addEventListener('change', this.toggleMusicHandler);
+		const soundCheckbox = DinoInterface.$('#sound-fx-checkbox');
+		this.toggleSoundHandler = () => {
+			const { checked } = soundCheckbox;
+			this.sounds.turnSoundsOn(checked);
+			if (this.sounds.isSoundsOn) this.sounds.play('beep');
+		};
+		soundCheckbox.addEventListener('change', this.toggleSoundHandler);
 	}
 
 	cleanUpMainMenuEvents() {
 		DinoInterface.$('#start-game-button').removeEventListener('click', this.startButtonHandler);
+		DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleMusicHandler);
+		DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundHandler);
 	}
 
 	async start() {
-		// await this.transition('loading');
+		await this.transition('loading');
 		await this.transition('mainMenu');
 		// this.transition('intro');
 		// await this.transition('explore');

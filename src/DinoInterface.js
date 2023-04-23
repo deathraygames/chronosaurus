@@ -52,6 +52,8 @@ class DinoInterface {
 
 	hide(selector) { DinoInterface.hide(selector); }
 
+	showLoading() { DinoInterface.show('#loading'); }
+
 	hideLoading() { DinoInterface.hide('#loading'); }
 
 	showWin() { DinoInterface.show('#win'); }

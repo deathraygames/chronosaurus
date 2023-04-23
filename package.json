@@ -33,6 +33,7 @@
     "noise-esm": "github:rocket-boots/noise-esm#v1.0.0",
     "rocket-boots-three-toolbox": "github:rocket-boots/rocket-boots-three-toolbox",
     "rocket-utility-belt": "github:rocket-boots/rocket-utility-belt#v0.3.1",
+    "sound-controller": "github:rocket-boots/sound-controller",
     "three": "^0.151.3"
   }
 }
