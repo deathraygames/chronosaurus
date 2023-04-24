@@ -67331,7 +67331,7 @@
 	// - scanning visor --- provides a wireframe view with things highlighted
 	// - drone --- provides a mobile viewing system
 	// - laser gun
-	const PARTS_NEEDED = 8;
+	const PARTS_NEEDED = 6;
 	const ITEMS = [
 		...PARTS,
 		{
