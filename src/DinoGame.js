@@ -35,18 +35,19 @@ const PART = {
 			interactionResult: { pickUp: true },
 		},
 	},
+	castShadow: true,
 	renderAs: 'model',
 	model: 'gear',
 };
 const PARTS = [
-	{ ...PART, randomAtRadius: 300 },
-	{ ...PART, randomAtRadius: 400, model: 'sputnik' },
-	{ ...PART, randomAtRadius: 500 },
+	{ ...PART, randomAtRadius: 300, model: 'computer', heightSizeOffset: -0.5 },
+	{ ...PART, randomAtRadius: 400, model: 'sputnik', heightSizeOffset: -0.5 },
 	{ ...PART, randomAtRadius: 600 },
-	{ ...PART, randomAtRadius: 700 },
-	{ ...PART, randomAtRadius: 2000, model: 'sputnik' },
-	{ ...PART, randomAtRadius: 3000 },
-	{ ...PART, randomAtRadius: 4000, model: 'sputnik' },
+	{ ...PART, randomAtRadius: 800, model: 'commandPod', heightSizeOffset: -0.25 },
+	{ ...PART, randomAtRadius: 1000, model: 'sputnik' },
+	{ ...PART, randomAtRadius: 2000 },
+	{ ...PART, randomAtRadius: 3000, model: 'sputnik' },
+	{ ...PART, randomAtRadius: 4000, model: 'computer' },
 	{ ...PART, randomAtRadius: 5000 },
 ];
 // Powers:
