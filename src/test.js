@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+// import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import ModelManager from './ModelManager.js';
 import models from './models.js';
 
@@ -22,6 +22,7 @@ function setupScene() {
 	return { scene, camera, renderer };
 }
 
+// eslint-disable-next-line
 async function loadGLBModel(scene, url) {
 	// Create a new instance of the GLTFLoader
 	// const loader = new GLTFLoader();
@@ -84,12 +85,15 @@ async function test() {
 }
 
 function updateMaterial(obj) {
+	/* eslint-disable no-param-reassign */
 	obj.material = new THREE.MeshStandardMaterial({
-		color: new THREE.Color(.5, .2, .1),
+		color: new THREE.Color(0.5, 0.2, 0.1),
 	});
 	obj.needsUpdate = true;
+	/* eslint-enable no-param-reassign */
 	window.render();
 }
+
 window.updateMaterial = updateMaterial;
 
 export default test;

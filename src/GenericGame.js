@@ -74,6 +74,10 @@ class GenericGame extends StateCommander {
 		return Math.floor(this.worldTime / SECONDS_PER_HOUR);
 	}
 
+	getWorldMinutes() {
+		return Math.floor(this.worldTime / 60) % 60;
+	}
+
 	assembleRenderData(gameTickData = {}) { // You should overwrite this method
 		return {
 			...gameTickData,
@@ -186,11 +190,13 @@ class GenericGame extends StateCommander {
 		return GenericGame.findNearest(this.items, coords, filter);
 	}
 
+	/** Will mutate certain things (array items) to set the `remove` property */
 	removeLost(things = [], despawnCenter = [0, 0, 0]) {
 		things.forEach((thing) => {
 			if (thing.isCharacter || thing.important) return;
 			if (typeof thing.despawnRadius !== 'number') return;
 			const distance = ArrayCoords.getDistance(despawnCenter, thing.coords);
+			// eslint-disable-next-line no-param-reassign
 			if (distance > this.despawnRadius) thing.remove = true;
 		});
 	}

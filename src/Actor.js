@@ -81,14 +81,14 @@ class Actor extends Entity {
 		this.health.add(healthHeal);
 	}
 
-	updateEmotions() {
-
-	}
+	// updateEmotions() {
+	// TODO
+	// }
 
 	updateLook(t, gameWorld) {
-		if (!this.autonomous) return 0;
+		if (!this.autonomous) return null;
 		// Look for a new target?
-		if (this.cooldowns.looking) return 0;
+		if (this.cooldowns.looking) return null;
 		// Reset look - assume no target
 		this.lookTargetEntity = null;
 		this.lookTargetDistance = Infinity;
@@ -96,7 +96,7 @@ class Actor extends Entity {
 		// Do the look in the game world
 		const filter = (actor) => (actor.faction !== this.faction && actor.entityId !== this.entityId);
 		const [dist, who] = gameWorld.findNearestActor(this.coords, filter);
-		if (!who) return 0;
+		if (!who) return [dist, who];
 		if (dist < this.fleeDistance) {
 			console.log(this.name, 'wants to flee');
 			// TODO: run away
@@ -107,6 +107,7 @@ class Actor extends Entity {
 			this.lookTargetEntity = who;
 			// console.log(this.name, 'wants to look at', who.coords);
 		}
+		return [dist, who];
 	}
 
 	updatePlan() {
@@ -141,6 +142,7 @@ class Actor extends Entity {
 			return { name: 'wander', moveTarget };
 			// console.log(this.name, 'planning a wander');
 		}
+		return { name: 'rest', moveTarget: null };
 	}
 
 	updateMovement(t, moveTarget) {
@@ -167,7 +169,7 @@ class Actor extends Entity {
 		this.health.clearLastDelta(); // TODO: move this somewhere else?
 		this.regenerate(seconds);
 		this.updateTimers(seconds);
-		this.updateEmotions(t);
+		// this.updateEmotions(t);
 		this.updateLook(t, game);
 		const newPlan = this.updatePlan(t);
 		if (newPlan) this.currentPlan = newPlan;

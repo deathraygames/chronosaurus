@@ -1,8 +1,12 @@
+/* eslint-disable class-methods-use-this */
+
 import * as THREE from 'three';
 import { Vector3, Group, Scene, PerspectiveCamera } from 'three';
-import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+// import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { TAU, HALF_PI, clamp } from 'rocket-utility-belt';
 import Renderer from 'rocket-boots-three-toolbox/src/Renderer.js';
 import ModelManager from './ModelManager.js';
+
 // import noise from 'noise-esm';
 
 window.THREE = THREE;
@@ -14,6 +18,10 @@ class DinoScene {
 		this.coordsConversion = [1, 1, 1];
 		this.gridSquareSize = 20;
 		this.clearColor = '#344';
+		this.sunLightAngle = Math.PI;
+		this.sunLightDistance = 10000; // Not sure this matters?
+		this.sunLightMaxIntensity = 0.4;
+		this.sunLightBaseIntensity = 0.2;
 		this.fov = 75;
 		this.eyeLightColor = 0xffffff;
 		this.eyeLightIntensity = 0.9;
@@ -21,6 +29,7 @@ class DinoScene {
 		this.chunkSize = 128; // In grid units
 		this.terrainSegments = 256;
 		// Instantiated things
+		this.sunLight = null;
 		this.eyeLight = null;
 		this.scene = null;
 		this.renderer = null;
@@ -78,13 +87,28 @@ class DinoScene {
 	}
 
 	setDirLight(x = 0, y = 0, z = 0) {
-		if (!this.dirLight) {
-			const color = 0xFFFFFF;
-			const intensity = 0.3;
-			this.dirLight = new THREE.DirectionalLight(color, intensity);
-			this.scene.add(this.dirLight);
-		}
+		if (!this.dirLight) this.addNewDirLight();
 		this.dirLight.position.set(x, y, z);
+	}
+
+	addNewDirLight(color = 0xffffff, intensity = 0.5) {
+		this.dirLight = new THREE.DirectionalLight(color, intensity);
+		this.scene.add(this.dirLight);
+	}
+
+	getSunLightIntensity() {
+		const intensityDelta = this.sunLightMaxIntensity - this.sunLightBaseIntensity;
+		const intensity = this.sunLightBaseIntensity + (
+			Math.sin(this.sunLightAngle + HALF_PI) * intensityDelta
+		);
+		return clamp(intensity, 0, 1);
+	}
+
+	setDirLightByAngle(angle) {
+		if (!this.dirLight) this.addNewDirLight();
+		this.sunLightAngle = angle % TAU;
+		this.dirLight.position.setFromCylindricalCoords(this.sunLightDistance, this.sunLightAngle, 0);
+		this.dirLight.intensity = this.getSunLightIntensity();
 	}
 
 	makeLight() {
@@ -99,7 +123,7 @@ class DinoScene {
 		// pointLight.lookAt(new Vector3());
 		this.scene.add(pointLight);
 
-		const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+		const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
 		this.scene.add(ambientLight);
 
 		// const sphereSize = 1;
@@ -132,17 +156,17 @@ class DinoScene {
 		return this;
 	}
 
-	updateToGoals(t) {
-		const q = 1.0 - (0.24 ** t); // This q & lerp logic is from simondev
-		// To lerp:
-		// obj.position.lerp(goalPos, q);
-		// To do it instantly:
-		// obj.position.copy(goalPos);
+	// updateToGoals(t) {
+	// const q = 1.0 - (0.24 ** t); // This q & lerp logic is from simondev
+	// To lerp:
+	// obj.position.lerp(goalPos, q);
+	// To do it instantly:
+	// obj.position.copy(goalPos);
 
-		// this.camera.rotation.setFromVector3(this.worldRotationGoal);
-	}
+	// this.camera.rotation.setFromVector3(this.worldRotationGoal);
+	// }
 
-	updateCamera(positionGoal, rotationGoal, focusGoal = new Vector3()) {
+	updateCamera(positionGoal, rotationGoal /* , focusGoal = new Vector3() */) {
 		if (positionGoal) {
 			this.camera.position.copy(DinoScene.convertCoordsToVector3(positionGoal));
 		}
@@ -179,14 +203,24 @@ class DinoScene {
 	update(options = {}, t = 5) { // time `t` is in milliseconds
 		// console.log(t);
 		const {
-			cameraPosition, cameraRotationGoalArray, worldCoords, entities, terrainChunks,
-			clearColor,
+			cameraPosition,
+			cameraRotationGoalArray,
+			worldCoords,
+			entities,
+			terrainChunks,
+			skyColor,
+			sunLightAngle,
 		} = options;
-		if (clearColor && clearColor !== this.clearColor) {
-			this.clearColor = DinoScene.makeColor(clearColor);
+		// Set sky and sunlight
+		if (skyColor && skyColor !== this.clearColor) {
+			this.clearColor = DinoScene.makeColor(skyColor);
 			this.renderer.setClearColor(this.clearColor);
 			this.scene.fog.color = this.clearColor;
 		}
+		if (typeof sunLightAngle === 'number' && sunLightAngle !== this.sunLightAngle) {
+			this.setDirLightByAngle(sunLightAngle);
+		}
+		// Set camera position
 		if (cameraPosition || cameraRotationGoalArray) {
 			const [x = 0, y = 0, z = 0] = cameraRotationGoalArray;
 			this.updateCamera(
@@ -257,7 +291,7 @@ class DinoScene {
 			// and remove any not visible
 			this.removeNotVisible(this.terrainGroup, visibleTerrainUuids);
 		}
-		this.updateToGoals(t);
+		// this.updateToGoals(t);
 		return this;
 	}
 
@@ -297,21 +331,26 @@ class DinoScene {
 		if (!textureImage.complete) {
 			console.warn('Cannot apply texture because image is not complete yet');
 		}
-		return; // FIXME: short-cutting this because it's not working
+		// FIXME: short-cutting this because it's not working
+		/*
 		const texture = new THREE.Texture(textureImage);
 		texture.type = THREE.RGBAFormat;
 		// console.log(texture, textureImage);
-		// new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+		// new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping,
+			THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter,
+			THREE.RGBAFormat, THREE.UnsignedByteType, 0);
 		const { material } = obj;
 		material.map = texture;
 		material.needsUpdate = true;
+		*/
 	}
 
-	applyHeightsToGeometry(geometry, heights, dataSize) {
+	applyHeightsToGeometry(geometry, heights /* , dataSize */) {
 		const { position } = geometry.attributes;
-		const vertices = position.array;
+		// const vertices = position.array;
 		const heightMultiplier = 1;
-		// console.log(vertices.length, position.count, 'dataSize', dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
+		// console.log(vertices.length, position.count, 'dataSize',
+		// dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
 		const heightsSize = heights.length;
 		// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 3) {
 		for (let i = 0; i < position.count; i += 1) {
@@ -350,7 +389,9 @@ class DinoScene {
 
 		// Option 1 -- a heightmap -- but it appears to be blank
 
-		// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+		// const heightMap = new THREE.Texture(terrainChunk.image, {},
+		// THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping,
+		// THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
 		// heightMap.needsUpdate = true;
 		// console.log(terrainChunk.image.complete);
 
@@ -368,7 +409,8 @@ class DinoScene {
 		// heightMap.wrapS = THREE.RepeatWrapping;
 		// heightMap.wrapT = THREE.RepeatWrapping;
 
-		const material = new THREE.MeshStandardMaterial({
+		// const material = new THREE.MeshStandardMaterial({
+		const material = new THREE.MeshPhongMaterial({
 			// opacity: 0.9,
 			color,
 			// map: texture,
@@ -385,6 +427,7 @@ class DinoScene {
 		// create the mesh for the terrain
 		const terrain = new THREE.Mesh(geometry, material);
 		terrain.receiveShadow = true;
+		terrain.castShadow = true;
 
 		{
 			const [x = 0, y = 0, z = 0] = center;
@@ -418,7 +461,7 @@ class DinoScene {
 	addNewWorldEntity(entity) {
 		if (!entity.renderAs) return null;
 		const { renderAs, size } = entity;
-		let texture; // get from entity.texture
+		// let texture; // get from entity.texture
 		let sceneObj; // mesh, plane, sprite, etc.
 		let color = (entity.color) ? DinoScene.makeColor(entity.color) : null;
 		if (renderAs === 'box') {

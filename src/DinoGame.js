@@ -5,6 +5,7 @@ import DinoScene from './DinoScene.js';
 import GenericGame from './GenericGame.js';
 import DinoWorld from './DinoWorld.js';
 import Actor from './Actor.js';
+import DinoSoundController from './DinoSoundController.js';
 import DinoItem from './DinoItem.js';
 import DinoInterface from './DinoInterface.js';
 import models from './models.js';
@@ -44,7 +45,7 @@ const PARTS = [
 	{ ...PART, randomAtRadius: 400, model: 'sputnik', heightSizeOffset: -0.5 },
 	{ ...PART, randomAtRadius: 600 },
 	{ ...PART, randomAtRadius: 800, model: 'commandPod', heightSizeOffset: -0.25 },
-	{ ...PART, randomAtRadius: 1000, model: 'sputnik' },
+	{ ...PART, randomAtRadius: 2200, model: 'sputnik' },
 	{ ...PART, randomAtRadius: 2000 },
 	{ ...PART, randomAtRadius: 3000, model: 'sputnik' },
 	{ ...PART, randomAtRadius: 4000, model: 'computer' },
@@ -88,7 +89,8 @@ const ITEMS = [
 	},
 ];
 
-const { X, Y, Z } = ArrayCoords;
+// const { X, Y, Z } = ArrayCoords;
+const { Z } = ArrayCoords;
 
 // Color names from https://coolors.co/99d4e6
 const DARK_PURPLE = '#352b40';
@@ -106,21 +108,21 @@ const SKY_COLOR_PER_HOUR = [
 	EGGPLANT, // 5
 	EGGPLANT,
 	OLD_ROSE, // 7
-	OLD_ROSE,
+	NON_PHOTO_BLUE,
 	NON_PHOTO_BLUE, // 9
 	NON_PHOTO_BLUE,
 	NON_PHOTO_BLUE,
 	NON_PHOTO_BLUE, // noon
 	NON_PHOTO_BLUE, // 13 (1 pm)
 	NON_PHOTO_BLUE,
-	NON_PHOTO_BLUE,
 	VISTA_BLUE,
-	VISTA_BLUE, // 17 (5pm)
-	VISTA_BLUE, // 18
-	ULTRA_VIOLET, // 19 (7 pm)
-	ULTRA_VIOLET,
-	ULTRA_VIOLET,
-	EGGPLANT, // 2
+	VISTA_BLUE,
+	ULTRA_VIOLET, // 17 (5pm)
+	ULTRA_VIOLET, // 18
+	EGGPLANT, // 19 (7 pm)
+	EGGPLANT,
+	DARK_PURPLE,
+	DARK_PURPLE, // 22
 	DARK_PURPLE, // 23
 	DARK_PURPLE, // 24
 ];
@@ -139,6 +141,7 @@ class DinoGame extends GenericGame {
 			WorldClass: DinoWorld,
 			ItemClass: DinoItem,
 			InterfaceClass: DinoInterface,
+			SoundControllerClass: DinoSoundController,
 			// SoundControllerClass: SoundController,
 		});
 		this.pointerLocker = new PointerLocker();
@@ -153,6 +156,8 @@ class DinoGame extends GenericGame {
 		this.despawnRadius = this.spawnRadii[1] * 1.5;
 		this.spawnDinos = true;
 		this.timeMachine = null;
+		this.headBop = true;
+		// this.testMode = true;
 	}
 
 	handleCommand(command) {
@@ -163,7 +168,7 @@ class DinoGame extends GenericGame {
 			// const spd = 10;
 			// Figure out the relative angle
 			let angleOfMovement = 0;
-			if (commandWords[1] === 'forward') {}
+			if (commandWords[1] === 'forward') angleOfMovement = 0;
 			else if (commandWords[1] === 'back') angleOfMovement += PI;
 			else if (commandWords[1] === 'left') angleOfMovement += HALF_PI;
 			else if (commandWords[1] === 'right') angleOfMovement -= HALF_PI;
@@ -172,7 +177,14 @@ class DinoGame extends GenericGame {
 			// const y = spd * Math.cos(angleOfMovement);
 			// mainCharacter.move([x, y, 0]);
 			// this.cameraCoords.position
-			if (this.mainCharacter.grounded) this.sounds.play('footsteps', { random: 0.1 });
+			if (this.mainCharacter.grounded) {
+				// this.sounds.play('footsteps', { random: 0.1 });
+				if (this.tick % 100 === 0) this.sounds.play('footsteps');
+				if (this.headBop) {
+					// TODO: this could be improved, and moved into the Actor class
+					this.mainCharacter.heightSizeOffset = Math.sin(this.tick / 10);
+				}
+			}
 		} else if (firstCommand === 'turn') {
 			let turnAmount = TAU / 50;
 			if (commandWords[1] === 'left') turnAmount *= -1;
@@ -251,6 +263,15 @@ class DinoGame extends GenericGame {
 		});
 	}
 
+	getSun() {
+		const hr = this.getWorldHour();
+		// Angle of 0 = fully risen, 12 = fully hidden
+		const sunLightAngle = (((hr / 24) * TAU) + PI) % TAU;
+		// TODO: Change the color of the sun light?
+		// TODO: Set min and max intensity values
+		return { sunLightAngle };
+	}
+
 	assembleRenderData(gameTickData = {}) { // You should overwrite this method
 		const { terrainChunks } = gameTickData;
 		// Assemble data needed to render
@@ -263,6 +284,7 @@ class DinoGame extends GenericGame {
 		} = this;
 		const [x, y, z] = mainCharacter.coords;
 		const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
+		const { sunLightAngle } = this.getSun();
 		const sceneUpdateOptions = {
 			terrainChunks,
 			// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
@@ -270,21 +292,35 @@ class DinoGame extends GenericGame {
 			cameraRotationGoalArray: [cameraVerticalRotation, 0, mainCharacter.facing - HALF_PI],
 			worldCoords: [-x, -y, -z],
 			entities: [...actors, ...items],
-			// clearColor: [0.5, 0.75, 1],
-			clearColor: SKY_COLOR_PER_HOUR[this.getWorldHour()],
-			sunLightAngle: (this.getWorldHour() / 24) * TAU,
-			sunLightIntensity: 0.3,
+			// skyColor: [0.5, 0.75, 1],
+			skyColor: SKY_COLOR_PER_HOUR[this.getWorldHour()],
+			sunLightAngle,
 		};
 		const { inventory } = mainCharacter;
 		const scannerItemPercentages = this.calcScannableItemPercentages();
+		const worldTimeArray = [
+			this.getWorldHour(), this.getWorldMinutes(),
+		];
+
+		// if (this.tick % 200 === 0) {
+		// 	console.log(
+		// 		worldTimeArray,
+		// 		// 'hr', this.getWorldHour(),
+		// 		// 'min', this.getWorldMinutes(),
+		// 		'sec', this.worldTime,
+		// 		'sunLightAngle', this.gameScene.sunLightAngle,
+		// 		'intensity', this.gameScene.getSunLightIntensity(),
+		// 	);
+		// }
 		const interfaceUpdates = {
 			actor: mainCharacter,
 			item: iItem,
 			scannerItemPercentages,
 			inventory,
-			debug: {
+			debug: (this.testMode) ? {
 				lastDeltaT: this.lastDeltaT,
-			},
+			} : null,
+			worldTimeArray,
 		};
 		return {
 			sceneUpdateOptions,
@@ -366,8 +402,10 @@ class DinoGame extends GenericGame {
 			spirit,
 			inventorySize: PARTS.length,
 			coords: [0, 0, 0],
-			walkForce: 14000,
-			jumpForce: 14000 * 22,
+			// walkForce: 14000,
+			// jumpForce: 14000 * 22,
+			walkForce: 6000,
+			jumpForce: 6000 * 22,
 		});
 		this.buildWorld();
 		const { gameScene } = this;
@@ -404,15 +442,16 @@ class DinoGame extends GenericGame {
 		};
 		DinoInterface.$('#start-game-button').addEventListener('click', this.startButtonHandler);
 		const musicCheckbox = DinoInterface.$('#music-checkbox');
-		musicCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
+		this.toggleSoundListener = () => this.toggleSoundBasedOnCheckboxes();
+		musicCheckbox.addEventListener('change', this.toggleSoundListener);
 		const soundCheckbox = DinoInterface.$('#sound-fx-checkbox');
-		soundCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
+		soundCheckbox.addEventListener('change', this.toggleSoundListener);
 	}
 
 	cleanUpMainMenuEvents() {
 		DinoInterface.$('#start-game-button').removeEventListener('click', this.startButtonHandler);
-		DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
-		DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
+		DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleSoundListener);
+		DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundListener);
 	}
 
 	async start() {

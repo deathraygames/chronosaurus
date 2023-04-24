@@ -32,7 +32,7 @@ const states = {
 			await game.setup();
 			game.interface.hide('#main-menu-loading');
 			game.interface.show('#menu');
-			// game.transition('explore'); // For testing
+			if (game.testMode) game.transition('explore'); // For testing
 		},
 		stop(game) {
 			game.interface.hideMainMenu();
@@ -48,7 +48,8 @@ const states = {
 			const song = game.sounds.playMusic('panic');
 			if (song) song.seek(65).fade(0, 0.75, 500);
 			game.interface.show('#intro');
-			setTimeout(() => game.transition('explore'), INTRO_TIME);
+			const waitTime = (game.testMode) ? 1000 : INTRO_TIME;
+			setTimeout(() => game.transition('explore'), waitTime);
 		},
 		stop(game) {
 			game.interface.hide('#intro');
@@ -80,6 +81,7 @@ const states = {
 				'It looks like your time machine broke apart, and pieces are strewn across this strange landscape.',
 				'((Click screen to enable/disable mouse look))',
 			]);
+			game.sounds.playMusic('wandering');
 		},
 		stop(game) {
 			game.interface.hideHud();

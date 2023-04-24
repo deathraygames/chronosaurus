@@ -33,6 +33,7 @@ const music = {
 	casual1: './audio/music/french-connection-10304.mp3',
 	casual2: './audio/music/message-is-love-11923.mp3',
 	home: './audio/music/long-journey-home-10307.mp3',
+	wandering: './audio/music/Chronosaurus_Wandering_Theme.mp3',
 };
 
 export { sounds, music };

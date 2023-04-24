@@ -8,7 +8,8 @@
     "serve": "npx http-server",
     "rollup": "rollup --config rollup.config.mjs",
     "build": "npm run rollup",
-    "watch": "rollup --config rollup.config.mjs -w"
+    "watch": "rollup --config rollup.config.mjs -w",
+    "lint": "eslint ./src/*.js"
   },
   "keywords": [
     "html5",

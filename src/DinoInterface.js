@@ -155,13 +155,26 @@ class DinoInterface {
 		}
 	}
 
+	updateClock(worldTimeArray) {
+		const [hours, minutes] = worldTimeArray;
+		const hourDegrees = Math.round((hours / 12) * 360);
+		const minutesDegrees = Math.round((minutes / 60) * 360);
+		DinoInterface.$('#world-clock .clock-hour-hand').style.transform = `rotate(${hourDegrees}deg)`;
+		DinoInterface.$('#world-clock .clock-minute-hand').style.transform = `rotate(${minutesDegrees}deg)`;
+		const minutesStr = ((minutes < 10) ? '0' : '') + minutes;
+		DinoInterface.setText('#world-clock .clock-text', [hours, minutesStr].join(':'));
+	}
+
 	render(interfaceUpdates = {}) {
-		const { item, actor, scannerItemPercentages, inventory, debug } = interfaceUpdates;
+		const {
+			item, actor, scannerItemPercentages, inventory, debug, worldTimeArray,
+		} = interfaceUpdates;
 		this.updateLog();
-		// this.updateDebug(debug, actor);
+		if (debug) this.updateDebug(debug, actor);
 		this.updateInteraction(item);
 		this.updateScanner(scannerItemPercentages);
 		this.updateStats(actor);
+		this.updateClock(worldTimeArray);
 		this.updateLog();
 		this.updateInventory(inventory);
 	}

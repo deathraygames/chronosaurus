@@ -439,6 +439,29 @@ label[for]:hover {
 	border-color: #76c379;
 }
 
+.hud-world-clock-container {
+	width: 7vmin;
+}
+
+#world-clock {
+	--clock-size: 7vmin;
+	--clock-hand-size: 0.25vmin;
+	position: relative;
+	top: 0;
+	border-color: var(--hud-color);
+	border-width: 1px;
+	background: transparent;
+	animation: none;
+}
+#world-clock .clock-hour-hand,
+#world-clock .clock-minute-hand,
+#world-clock .clock-second-hand {
+	animation: none;
+}
+#world-clock .clock-text {
+	font-size: calc(var(--clock-size) / 7);
+}
+
 /* ---------------------------------------------------- Main Menu ----- */
 
 #main-menu {
@@ -507,7 +530,6 @@ label[for]:hover {
 }
 
 .credits {
-	padding-bottom: 20vmin;
 	max-width: 20em;
 }
 
@@ -528,12 +550,25 @@ label[for]:hover {
 #menu {
 	display: flex;
 	flex-direction: column;
-	gap: 4vmin;
+	gap: 3vmin;
+}
+#menu.ui-hide {
+	display: none;
+}
+
+#main-menu-loading {
+	min-width: 20vmin;
+}
+#main-menu-loading.ui-hide {
+	display: none;
 }
 
 #main-menu-loading .clock {
 	--clock-size: 20vmin;
 	--clock-hand-size: 1em;
+	position: relative;
+	top: 0;
+	left: -6vmin;
 }
 
 /* ---------------------------------------------------- Intro ----- */

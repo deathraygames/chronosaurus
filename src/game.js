@@ -1,36 +1,33 @@
 import DinoGame from './DinoGame.js';
-import test from './test.js';
+// import test from './test.js';
 
-let game = {};
+const game = new DinoGame({
+	textures: {
 
-if (true) {
-	game = new DinoGame({
-		textures: {
+	},
+	sounds: {
 
-		},
-		sounds: {
+	},
+	prototypes: {
+		tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
+	},
+	terrainItems: {
 
-		},
-		prototypes: {
-			tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
-		},
-		terrainItems: {
+	},
+	specialItems: {
 
-		},
-		specialItems: {
+	},
+	actors: {
 
-		},
-		actors: {
+	},
+});
+window.document.addEventListener('DOMContentLoaded', () => {
+	game.start();
+});
+window.game = game;
+window.g = game;
 
-		},
-	});
-	window.document.addEventListener('DOMContentLoaded', () => {
-		game.start();
-	});
-	window.game = game;
-	window.g = game;
-} else {
-	window.document.addEventListener('DOMContentLoaded', () => test());
-}
+// Replace above with this below for testing model loading
+// window.document.addEventListener('DOMContentLoaded', () => test());
 
 export default game;

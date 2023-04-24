@@ -21,6 +21,8 @@ class Entity {
 		this.color = 0xffffff;
 		this.inventory = [];
 		this.inventorySize = 0;
+		// heightSizeOffset needs to be 0.5 for objects that have their center at the center of
+		// the model, but should be 0 for models that have the center by their bottom already.
 		this.heightSizeOffset = 0.5;
 		this.size = 2;
 		this.lookLength = 30;
@@ -176,7 +178,7 @@ class Entity {
 	}
 
 	updatePhysics(t, options = {}) {
-		if (!this.physics) return 0;
+		if (!this.physics) return null;
 		const seconds = t / 1000;
 		const {
 			gravity = [0, 0, -6],
@@ -205,6 +207,7 @@ class Entity {
 			(Math.abs(this.vel[Z]) < 0.001) ? 0 : this.vel[Z],
 		];
 		this.movementForce = 0;
+		return true;
 	}
 
 	update(t) {

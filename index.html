@@ -27,6 +27,13 @@
 						<ul id="log-list"></ul>
 					</div>
 				</div>
+				<div class="hud-world-clock-container">
+					<div id="world-clock" class="clock">
+						<div class="clock-text"></div>
+						<div class="clock-minute-hand"></div>
+						<div class="clock-hour-hand"></div>
+					</div>
+				</div>
 				<div id="scanner">
 					Scanner shows the proximity of your tech:
 					<ul id="scans"></ul>
@@ -108,7 +115,7 @@
 					<section class="credits">
 						<h1>Credits</h1>
 						<p>
-							Code, Game design, etc. by Luke
+							Code, game design, etc. by Luke N.
 							<br>(Deathray).
 						</p>
 						<p>
@@ -116,15 +123,30 @@
 						</p>
 						<p>
 							Music by
-							<a href="https://pixabay.com/users/burnishedbronze-20676240/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=10304">A. Ewers (BurnishedBronze)</a>
-							from <a href="https://pixabay.com//?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=10304">Pixabay</a>.
+							<ul>
+								<li>Elijah Carrick</li>
+								<li>
+									<a href="https://pixabay.com/users/burnishedbronze-20676240/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=10304">A. Ewers (BurnishedBronze)</a>
+										<br>from <a href="https://pixabay.com//?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=10304">Pixabay</a>
+								</li>
+							</ul>
 						</p>
 						<p>
 							3D Models by
-							<a href="https://quaternius.com/">Quaternius</a>
-							and "Poly by Google" [CC-BY] via <a href="https://poly.pizza/u/Poly%20by%20Google">Poly Pizza</a>
+							<ul>
+								<li><a href="https://quaternius.com/">Quaternius</a></li>
+								<li>
+									"Poly by Google" [CC-BY]
+									<br>via <a href="https://poly.pizza/u/Poly%20by%20Google">Poly Pizza</a>
+								</li>
+							</ul>
 						</p>
-
+						<p>
+							Color palette (<a href="https://lospec.com/palette-list/nanner-jam">Nanner Jam</a>) by Afterimage
+						</p>
+						<p>
+							Made in 2023 for Gamedev.js Jam
+						</p>
 					</section>
 					<section id="menu">
 						<button type="button" id="start-game-button">⏲ Enter the Time Machine</button>
@@ -137,7 +159,7 @@
 							<label for="sound-fx-checkbox">Sound Effects</label>
 						</div>
 					</section>
-					<div id="main-menu-loading" class="full-screen">
+					<div id="main-menu-loading">
 						<div class="clock">
 							<div class="clock-text">Loading...</div>
 							<div class="clock-second-hand"></div>

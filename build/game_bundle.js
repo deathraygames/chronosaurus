@@ -14,9 +14,9 @@
 	const EAST = 1;
 	const SOUTH = 2;
 	const WEST = 3;
-	const X$3 = 0;
-	const Y$3 = 1;
-	const Z$3 = 2;
+	const X$2 = 0;
+	const Y$2 = 1;
+	const Z$2 = 2;
 	const DIRECTION_NAMES = Object.freeze(['North', 'East', 'South', 'West']);
 	const DIRECTIONS = Object.freeze([NORTH, EAST, SOUTH, WEST]);
 	const FACING_RADIANS = Object.freeze([0, PI$1 * 0.5, PI$1, PI$1 * 1.5]);
@@ -31,13 +31,13 @@
 		static getRelativeCoordsInDirection(coords, facing, forward = 0, strafe = 0, up = 0) {
 			const newCoords = [...coords];
 			const facingEastWest = (facing % 2);
-			const forwardAxis = facingEastWest ? X$3 : Y$3;
-			const strafeAxis = facingEastWest ? Y$3 : X$3;
+			const forwardAxis = facingEastWest ? X$2 : Y$2;
+			const strafeAxis = facingEastWest ? Y$2 : X$2;
 			const forwardDirection = (facing === NORTH || facing === WEST) ? -1 : 1;
 			const strafeDirection = (facing === NORTH || facing === EAST) ? 1 : -1;
 			newCoords[forwardAxis] += (forward * forwardDirection);
 			newCoords[strafeAxis] += (strafe * strafeDirection);
-			newCoords[Z$3] += up;
+			newCoords[Z$2] += up;
 			return newCoords;
 		}
 
@@ -58,9 +58,9 @@
 
 		static getDistance(coords1, coords2) {
 			return Math.sqrt(
-				(coords2[X$3] - coords1[X$3]) ** 2
-				+ (coords2[Y$3] - coords1[Y$3]) ** 2
-				+ (coords2[Z$3] - coords1[Z$3]) ** 2,
+				(coords2[X$2] - coords1[X$2]) ** 2
+				+ (coords2[Y$2] - coords1[Y$2]) ** 2
+				+ (coords2[Z$2] - coords1[Z$2]) ** 2,
 			);
 		}
 
@@ -69,36 +69,36 @@
 		 * e.g., From 0,0 to 0,1 (up) --> 0 ...to 1,0 (right) --> half pi ...to 0,-1 (below) --> pi
 		 */
 		static getAngleFacing(coords1, coords2) {
-			const dx = coords2[X$3] - coords1[X$3];
-			const dy = coords2[Y$3] - coords1[Y$3];
+			const dx = coords2[X$2] - coords1[X$2];
+			const dy = coords2[Y$2] - coords1[Y$2];
 			return Math.atan2(dy, dx);
 		}
 
 		static checkEqual(coords1, coords2) {
-			return (coords1[X$3] === coords2[X$3] && coords1[Y$3] === coords2[Y$3] && coords1[Z$3] === coords2[Z$3]);
+			return (coords1[X$2] === coords2[X$2] && coords1[Y$2] === coords2[Y$2] && coords1[Z$2] === coords2[Z$2]);
 		}
 
 		static subtract(coords1, coords2) {
-			return [coords1[X$3] - coords2[X$3], coords1[Y$3] - coords2[Y$3], coords1[Z$3] - coords2[Z$3]];
+			return [coords1[X$2] - coords2[X$2], coords1[Y$2] - coords2[Y$2], coords1[Z$2] - coords2[Z$2]];
 		}
 
 		static add(coords1, coords2) {
-			return [coords1[X$3] + coords2[X$3], coords1[Y$3] + coords2[Y$3], coords1[Z$3] + coords2[Z$3]];
+			return [coords1[X$2] + coords2[X$2], coords1[Y$2] + coords2[Y$2], coords1[Z$2] + coords2[Z$2]];
 		}
 
 		static multiply(coords, m) {
 			return [
-				coords[X$3] * m,
-				coords[Y$3] * m,
-				coords[Z$3] * m,
+				coords[X$2] * m,
+				coords[Y$2] * m,
+				coords[Z$2] * m,
 			];
 		}
 
 		static clampEachCoord(coords, min, max) {
 			return [
-				clamp$2(coords[X$3], min, max),
-				clamp$2(coords[Y$3], min, max),
-				clamp$2(coords[Z$3], min, max),
+				clamp$2(coords[X$2], min, max),
+				clamp$2(coords[Y$2], min, max),
+				clamp$2(coords[Z$2], min, max),
 			];
 		}
 
@@ -138,9 +138,9 @@
 	}
 
 	// Indices
-	ArrayCoords.X = X$3;
-	ArrayCoords.Y = Y$3;
-	ArrayCoords.Z = Z$3;
+	ArrayCoords.X = X$2;
+	ArrayCoords.Y = Y$2;
+	ArrayCoords.Z = Z$2;
 	ArrayCoords.NORTH = NORTH;
 	ArrayCoords.EAST = EAST;
 	ArrayCoords.SOUTH = SOUTH;
@@ -51833,60 +51833,6 @@
 		sRGBEncoding: sRGBEncoding
 	});
 
-	function clone( source ) {
-
-		const sourceLookup = new Map();
-		const cloneLookup = new Map();
-
-		const clone = source.clone();
-
-		parallelTraverse( source, clone, function ( sourceNode, clonedNode ) {
-
-			sourceLookup.set( clonedNode, sourceNode );
-			cloneLookup.set( sourceNode, clonedNode );
-
-		} );
-
-		clone.traverse( function ( node ) {
-
-			if ( ! node.isSkinnedMesh ) return;
-
-			const clonedMesh = node;
-			const sourceMesh = sourceLookup.get( node );
-			const sourceBones = sourceMesh.skeleton.bones;
-
-			clonedMesh.skeleton = sourceMesh.skeleton.clone();
-			clonedMesh.bindMatrix.copy( sourceMesh.bindMatrix );
-
-			clonedMesh.skeleton.bones = sourceBones.map( function ( bone ) {
-
-				return cloneLookup.get( bone );
-
-			} );
-
-			clonedMesh.bind( clonedMesh.skeleton, clonedMesh.bindMatrix );
-
-		} );
-
-		return clone;
-
-	}
-
-
-
-
-	function parallelTraverse( a, b, callback ) {
-
-		callback( a, b );
-
-		for ( let i = 0; i < a.children.length; i ++ ) {
-
-			parallelTraverse( a.children[ i ], b.children[ i ], callback );
-
-		}
-
-	}
-
 	class Renderer extends WebGLRenderer {
 		constructor(options = {}) {
 			super();
@@ -61351,6 +61297,60 @@
 
 	}
 
+	function clone( source ) {
+
+		const sourceLookup = new Map();
+		const cloneLookup = new Map();
+
+		const clone = source.clone();
+
+		parallelTraverse( source, clone, function ( sourceNode, clonedNode ) {
+
+			sourceLookup.set( clonedNode, sourceNode );
+			cloneLookup.set( sourceNode, clonedNode );
+
+		} );
+
+		clone.traverse( function ( node ) {
+
+			if ( ! node.isSkinnedMesh ) return;
+
+			const clonedMesh = node;
+			const sourceMesh = sourceLookup.get( node );
+			const sourceBones = sourceMesh.skeleton.bones;
+
+			clonedMesh.skeleton = sourceMesh.skeleton.clone();
+			clonedMesh.bindMatrix.copy( sourceMesh.bindMatrix );
+
+			clonedMesh.skeleton.bones = sourceBones.map( function ( bone ) {
+
+				return cloneLookup.get( bone );
+
+			} );
+
+			clonedMesh.bind( clonedMesh.skeleton, clonedMesh.bindMatrix );
+
+		} );
+
+		return clone;
+
+	}
+
+
+
+
+	function parallelTraverse( a, b, callback ) {
+
+		callback( a, b );
+
+		for ( let i = 0; i < a.children.length; i ++ ) {
+
+			parallelTraverse( a.children[ i ], b.children[ i ], callback );
+
+		}
+
+	}
+
 	class ModelManager {
 		constructor(models = {}) {
 			this.models = {};
@@ -61533,6 +61533,8 @@
 		}
 	}
 
+	/* eslint-disable class-methods-use-this */
+
 	// import noise from 'noise-esm';
 
 	window.THREE = THREE;
@@ -61544,6 +61546,10 @@
 			this.coordsConversion = [1, 1, 1];
 			this.gridSquareSize = 20;
 			this.clearColor = '#344';
+			this.sunLightAngle = Math.PI;
+			this.sunLightDistance = 10000; // Not sure this matters?
+			this.sunLightMaxIntensity = 0.4;
+			this.sunLightBaseIntensity = 0.2;
 			this.fov = 75;
 			this.eyeLightColor = 0xffffff;
 			this.eyeLightIntensity = 0.9;
@@ -61551,6 +61557,7 @@
 			this.chunkSize = 128; // In grid units
 			this.terrainSegments = 256;
 			// Instantiated things
+			this.sunLight = null;
 			this.eyeLight = null;
 			this.scene = null;
 			this.renderer = null;
@@ -61608,13 +61615,28 @@
 		}
 
 		setDirLight(x = 0, y = 0, z = 0) {
-			if (!this.dirLight) {
-				const color = 0xFFFFFF;
-				const intensity = 0.3;
-				this.dirLight = new DirectionalLight(color, intensity);
-				this.scene.add(this.dirLight);
-			}
+			if (!this.dirLight) this.addNewDirLight();
 			this.dirLight.position.set(x, y, z);
+		}
+
+		addNewDirLight(color = 0xffffff, intensity = 0.5) {
+			this.dirLight = new DirectionalLight(color, intensity);
+			this.scene.add(this.dirLight);
+		}
+
+		getSunLightIntensity() {
+			const intensityDelta = this.sunLightMaxIntensity - this.sunLightBaseIntensity;
+			const intensity = this.sunLightBaseIntensity + (
+				Math.sin(this.sunLightAngle + HALF_PI$1) * intensityDelta
+			);
+			return clamp$2(intensity, 0, 1);
+		}
+
+		setDirLightByAngle(angle) {
+			if (!this.dirLight) this.addNewDirLight();
+			this.sunLightAngle = angle % TAU$1;
+			this.dirLight.position.setFromCylindricalCoords(this.sunLightDistance, this.sunLightAngle, 0);
+			this.dirLight.intensity = this.getSunLightIntensity();
 		}
 
 		makeLight() {
@@ -61629,7 +61651,7 @@
 			// pointLight.lookAt(new Vector3());
 			this.scene.add(pointLight);
 
-			const ambientLight = new AmbientLight(0x404040, 0.5);
+			const ambientLight = new AmbientLight(0x404040, 0.3);
 			this.scene.add(ambientLight);
 
 			// const sphereSize = 1;
@@ -61662,16 +61684,17 @@
 			return this;
 		}
 
-		updateToGoals(t) {
-			// To lerp:
-			// obj.position.lerp(goalPos, q);
-			// To do it instantly:
-			// obj.position.copy(goalPos);
+		// updateToGoals(t) {
+		// const q = 1.0 - (0.24 ** t); // This q & lerp logic is from simondev
+		// To lerp:
+		// obj.position.lerp(goalPos, q);
+		// To do it instantly:
+		// obj.position.copy(goalPos);
 
-			// this.camera.rotation.setFromVector3(this.worldRotationGoal);
-		}
+		// this.camera.rotation.setFromVector3(this.worldRotationGoal);
+		// }
 
-		updateCamera(positionGoal, rotationGoal, focusGoal = new Vector3()) {
+		updateCamera(positionGoal, rotationGoal /* , focusGoal = new Vector3() */) {
 			if (positionGoal) {
 				this.camera.position.copy(DinoScene.convertCoordsToVector3(positionGoal));
 			}
@@ -61708,14 +61731,24 @@
 		update(options = {}, t = 5) { // time `t` is in milliseconds
 			// console.log(t);
 			const {
-				cameraPosition, cameraRotationGoalArray, worldCoords, entities, terrainChunks,
-				clearColor,
+				cameraPosition,
+				cameraRotationGoalArray,
+				worldCoords,
+				entities,
+				terrainChunks,
+				skyColor,
+				sunLightAngle,
 			} = options;
-			if (clearColor && clearColor !== this.clearColor) {
-				this.clearColor = DinoScene.makeColor(clearColor);
+			// Set sky and sunlight
+			if (skyColor && skyColor !== this.clearColor) {
+				this.clearColor = DinoScene.makeColor(skyColor);
 				this.renderer.setClearColor(this.clearColor);
 				this.scene.fog.color = this.clearColor;
 			}
+			if (typeof sunLightAngle === 'number' && sunLightAngle !== this.sunLightAngle) {
+				this.setDirLightByAngle(sunLightAngle);
+			}
+			// Set camera position
 			if (cameraPosition || cameraRotationGoalArray) {
 				const [x = 0, y = 0, z = 0] = cameraRotationGoalArray;
 				this.updateCamera(
@@ -61784,7 +61817,7 @@
 				// and remove any not visible
 				this.removeNotVisible(this.terrainGroup, visibleTerrainUuids);
 			}
-			this.updateToGoals(t);
+			// this.updateToGoals(t);
 			return this;
 		}
 
@@ -61824,14 +61857,26 @@
 			if (!textureImage.complete) {
 				console.warn('Cannot apply texture because image is not complete yet');
 			}
-			return; // FIXME: short-cutting this because it's not working
+			// FIXME: short-cutting this because it's not working
+			/*
+			const texture = new THREE.Texture(textureImage);
+			texture.type = THREE.RGBAFormat;
+			// console.log(texture, textureImage);
+			// new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping,
+				THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter,
+				THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+			const { material } = obj;
+			material.map = texture;
+			material.needsUpdate = true;
+			*/
 		}
 
-		applyHeightsToGeometry(geometry, heights, dataSize) {
+		applyHeightsToGeometry(geometry, heights /* , dataSize */) {
 			const { position } = geometry.attributes;
-			position.array;
+			// const vertices = position.array;
 			const heightMultiplier = 1;
-			// console.log(vertices.length, position.count, 'dataSize', dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
+			// console.log(vertices.length, position.count, 'dataSize',
+			// dataSize, 'dataSize^2', dataSize * dataSize, 'height length', heights.length, heights);
 			const heightsSize = heights.length;
 			// for (let i = 0, j = 0, l = vertices.length; i < l; i += 1, j += 3) {
 			for (let i = 0; i < position.count; i += 1) {
@@ -61870,7 +61915,9 @@
 
 			// Option 1 -- a heightmap -- but it appears to be blank
 
-			// const heightMap = new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+			// const heightMap = new THREE.Texture(terrainChunk.image, {},
+			// THREE.ClampToEdgeWrapping, THREE.ClampToEdgeWrapping,
+			// THREE.NearestFilter, THREE.NearestFilter, THREE.RGBAFormat, THREE.UnsignedByteType, 0);
 			// heightMap.needsUpdate = true;
 			// console.log(terrainChunk.image.complete);
 
@@ -61888,7 +61935,8 @@
 			// heightMap.wrapS = THREE.RepeatWrapping;
 			// heightMap.wrapT = THREE.RepeatWrapping;
 
-			const material = new MeshStandardMaterial({
+			// const material = new THREE.MeshStandardMaterial({
+			const material = new MeshPhongMaterial({
 				// opacity: 0.9,
 				color,
 				// map: texture,
@@ -61905,6 +61953,7 @@
 			// create the mesh for the terrain
 			const terrain = new Mesh(geometry, material);
 			terrain.receiveShadow = true;
+			terrain.castShadow = true;
 
 			{
 				const [x = 0, y = 0, z = 0] = center;
@@ -61938,6 +61987,7 @@
 		addNewWorldEntity(entity) {
 			if (!entity.renderAs) return null;
 			const { renderAs, size } = entity;
+			// let texture; // get from entity.texture
 			let sceneObj; // mesh, plane, sprite, etc.
 			let color = (entity.color) ? DinoScene.makeColor(entity.color) : null;
 			if (renderAs === 'box') {
@@ -65447,7 +65497,7 @@
 	SoundController.Howl = howler.Howl;
 	SoundController.Howler = howler.Howler;
 
-	const { X: X$2, Y: Y$2, Z: Z$2 } = ArrayCoords;
+	const { X: X$1, Y: Y$1, Z: Z$1 } = ArrayCoords;
 
 	class Entity {
 		constructor(properties = {}) {
@@ -65468,6 +65518,8 @@
 			this.color = 0xffffff;
 			this.inventory = [];
 			this.inventorySize = 0;
+			// heightSizeOffset needs to be 0.5 for objects that have their center at the center of
+			// the model, but should be 0 for models that have the center by their bottom already.
 			this.heightSizeOffset = 0.5;
 			this.size = 2;
 			this.lookLength = 30;
@@ -65482,18 +65534,18 @@
 		}
 
 		/* eslint-disable no-param-reassign */
-		static setX(entity, x) { entity.coords[X$2] = x; }
+		static setX(entity, x) { entity.coords[X$1] = x; }
 
-		static setY(entity, y) { entity.coords[Y$2] = y; }
+		static setY(entity, y) { entity.coords[Y$1] = y; }
 
-		static setZ(entity, z) { entity.coords[Z$2] = z; }
+		static setZ(entity, z) { entity.coords[Z$1] = z; }
 		/* eslint-enable no-param-reassign */
 
-		setX(x) { this.coords[X$2] = x; }
+		setX(x) { this.coords[X$1] = x; }
 
-		setY(y) { this.coords[Y$2] = y; }
+		setY(y) { this.coords[Y$1] = y; }
 
-		setZ(z) { this.coords[Z$2] = z; }
+		setZ(z) { this.coords[Z$1] = z; }
 
 		getCoords() {
 			return [...this.coords];
@@ -65517,7 +65569,7 @@
 
 		calcLookAt() {
 			const [x, y] = ArrayCoords.polarToCartesian(this.lookLength, this.facing);
-			const h = this.coords[Z$2];
+			const h = this.coords[Z$1];
 			// TODO: ^ Add the relative height of the terrain at the x,y spot
 			this.lookAt = ArrayCoords.add(this.coords, [x, y, h]);
 			return this.lookAt;
@@ -65623,7 +65675,7 @@
 		}
 
 		updatePhysics(t, options = {}) {
-			if (!this.physics) return 0;
+			if (!this.physics) return null;
 			const seconds = t / 1000;
 			const {
 				gravity = [0, 0, -6],
@@ -65647,11 +65699,12 @@
 			if (this.movementForce) friction = airFriction; // no friction if moving/walking
 			this.vel = ArrayCoords.multiply(this.vel, friction);
 			this.vel = [
-				(Math.abs(this.vel[X$2]) < 0.001) ? 0 : this.vel[X$2],
-				(Math.abs(this.vel[Y$2]) < 0.001) ? 0 : this.vel[Y$2],
-				(Math.abs(this.vel[Z$2]) < 0.001) ? 0 : this.vel[Z$2],
+				(Math.abs(this.vel[X$1]) < 0.001) ? 0 : this.vel[X$1],
+				(Math.abs(this.vel[Y$1]) < 0.001) ? 0 : this.vel[Y$1],
+				(Math.abs(this.vel[Z$1]) < 0.001) ? 0 : this.vel[Z$1],
 			];
 			this.movementForce = 0;
+			return true;
 		}
 
 		update(t) {
@@ -65849,6 +65902,10 @@
 			return Math.floor(this.worldTime / SECONDS_PER_HOUR);
 		}
 
+		getWorldMinutes() {
+			return Math.floor(this.worldTime / 60) % 60;
+		}
+
 		assembleRenderData(gameTickData = {}) { // You should overwrite this method
 			return {
 				...gameTickData,
@@ -65961,11 +66018,13 @@
 			return GenericGame.findNearest(this.items, coords, filter);
 		}
 
+		/** Will mutate certain things (array items) to set the `remove` property */
 		removeLost(things = [], despawnCenter = [0, 0, 0]) {
 			things.forEach((thing) => {
 				if (thing.isCharacter || thing.important) return;
 				if (typeof thing.despawnRadius !== 'number') return;
 				const distance = ArrayCoords.getDistance(despawnCenter, thing.coords);
+				// eslint-disable-next-line no-param-reassign
 				if (distance > this.despawnRadius) thing.remove = true;
 			});
 		}
@@ -66337,7 +66396,9 @@
 		);
 	};
 
-	const { X: X$1, Y: Y$1, Z: Z$1 } = ArrayCoords;
+	/* eslint-disable class-methods-use-this */
+
+	const { X, Y } = ArrayCoords;
 
 	class DinoWorld {
 		constructor() {
@@ -66399,7 +66460,9 @@
 			h += DinoWorld.calcNoiseHeight(x, y, 0.02, roughness);
 
 			// Add ripples (negative for erosion)
-			h -= 20 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+			h -= 20 * (
+				1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0))
+			);
 			h = clamp$2(h, minHeight, maxHeight);
 			// h += DinoWorld.calcNoiseHeight(x, y, 0.00021, 200);
 			// this.validateNumbers({ h, h2 });
@@ -66418,21 +66481,21 @@
 
 		/** Get chunk-level x,y,z coordinates from world x,y,z coordinates */
 		getChunkCoords(coords) {
-			const x = this.getChunkCoord(coords[X$1]);
-			const y = this.getChunkCoord(coords[Y$1]);
+			const x = this.getChunkCoord(coords[X]);
+			const y = this.getChunkCoord(coords[Y]);
 			const z = 0; // right now we don't do chunking up/down
 			return [x, y, z];
 		}
 
 		getChunkTopLeftCoords(chunkCoords) {
 			const center = this.getChunkCenterCoords(chunkCoords);
-			return [center[X$1] - this.halfChunkSize, center[Y$1] + this.halfChunkSize, 0];
+			return [center[X] - this.halfChunkSize, center[Y] + this.halfChunkSize, 0];
 		}
 
 		getChunkCenterCoords(chunkCoords) {
 			if (!chunkCoords) throw new Error();
-			const centerX = chunkCoords[X$1] * this.chunkSize;
-			const centerY = chunkCoords[Y$1] * this.chunkSize;
+			const centerX = chunkCoords[X] * this.chunkSize;
+			const centerY = chunkCoords[Y] * this.chunkSize;
 			return [centerX, centerY, 0];
 		}
 
@@ -66467,8 +66530,8 @@
 				for (x = 0; x < dataSize; x += 1) {
 					// Convert the x, y steps to actual world x, y
 					const convSize = this.terrainSegmentSize;
-					const worldX = topLeft[X$1] + (x * convSize);
-					const worldY = topLeft[Y$1] - (y * convSize);
+					const worldX = topLeft[X] + (x * convSize);
+					const worldY = topLeft[Y] - (y * convSize);
 					this.validateNumbers({ worldX, worldY });
 					const h = this.calcTerrainHeight(worldX, worldY);
 					// if (y === 0) console.log('y = 0', x, h);
@@ -66624,14 +66687,14 @@
 			this.health.add(healthHeal);
 		}
 
-		updateEmotions() {
-
-		}
+		// updateEmotions() {
+		// TODO
+		// }
 
 		updateLook(t, gameWorld) {
-			if (!this.autonomous) return 0;
+			if (!this.autonomous) return null;
 			// Look for a new target?
-			if (this.cooldowns.looking) return 0;
+			if (this.cooldowns.looking) return null;
 			// Reset look - assume no target
 			this.lookTargetEntity = null;
 			this.lookTargetDistance = Infinity;
@@ -66639,7 +66702,7 @@
 			// Do the look in the game world
 			const filter = (actor) => (actor.faction !== this.faction && actor.entityId !== this.entityId);
 			const [dist, who] = gameWorld.findNearestActor(this.coords, filter);
-			if (!who) return 0;
+			if (!who) return [dist, who];
 			if (dist < this.fleeDistance) {
 				console.log(this.name, 'wants to flee');
 				// TODO: run away
@@ -66650,6 +66713,7 @@
 				this.lookTargetEntity = who;
 				// console.log(this.name, 'wants to look at', who.coords);
 			}
+			return [dist, who];
 		}
 
 		updatePlan() {
@@ -66684,6 +66748,7 @@
 				return { name: 'wander', moveTarget };
 				// console.log(this.name, 'planning a wander');
 			}
+			return { name: 'rest', moveTarget: null };
 		}
 
 		updateMovement(t, moveTarget) {
@@ -66710,12 +66775,18 @@
 			this.health.clearLastDelta(); // TODO: move this somewhere else?
 			this.regenerate(seconds);
 			this.updateTimers(seconds);
-			this.updateEmotions(t);
+			// this.updateEmotions(t);
 			this.updateLook(t, game);
 			const newPlan = this.updatePlan(t);
 			if (newPlan) this.currentPlan = newPlan;
 			this.updateMovement(t, this.currentPlan.moveTarget);
 			this.updatePhysics(t);
+		}
+	}
+
+	class DinoSoundController extends SoundController {
+		constructor(soundsListing = {}, musicListing = {}) {
+			super(soundsListing, musicListing);
 		}
 	}
 
@@ -66958,13 +67029,26 @@
 			}
 		}
 
+		updateClock(worldTimeArray) {
+			const [hours, minutes] = worldTimeArray;
+			const hourDegrees = Math.round((hours / 12) * 360);
+			const minutesDegrees = Math.round((minutes / 60) * 360);
+			DinoInterface.$('#world-clock .clock-hour-hand').style.transform = `rotate(${hourDegrees}deg)`;
+			DinoInterface.$('#world-clock .clock-minute-hand').style.transform = `rotate(${minutesDegrees}deg)`;
+			const minutesStr = ((minutes < 10) ? '0' : '') + minutes;
+			DinoInterface.setText('#world-clock .clock-text', [hours, minutesStr].join(':'));
+		}
+
 		render(interfaceUpdates = {}) {
-			const { item, actor, scannerItemPercentages, inventory, debug } = interfaceUpdates;
+			const {
+				item, actor, scannerItemPercentages, inventory, debug, worldTimeArray,
+			} = interfaceUpdates;
 			this.updateLog();
-			// this.updateDebug(debug, actor);
+			if (debug) this.updateDebug(debug, actor);
 			this.updateInteraction(item);
 			this.updateScanner(scannerItemPercentages);
 			this.updateStats(actor);
+			this.updateClock(worldTimeArray);
 			this.updateLog();
 			this.updateInventory(inventory);
 		}
@@ -67117,7 +67201,7 @@
 				await game.setup();
 				game.interface.hide('#main-menu-loading');
 				game.interface.show('#menu');
-				// game.transition('explore'); // For testing
+				if (game.testMode) game.transition('explore'); // For testing
 			},
 			stop(game) {
 				game.interface.hideMainMenu();
@@ -67133,7 +67217,8 @@
 				const song = game.sounds.playMusic('panic');
 				if (song) song.seek(65).fade(0, 0.75, 500);
 				game.interface.show('#intro');
-				setTimeout(() => game.transition('explore'), INTRO_TIME);
+				const waitTime = (game.testMode) ? 1000 : INTRO_TIME;
+				setTimeout(() => game.transition('explore'), waitTime);
 			},
 			stop(game) {
 				game.interface.hide('#intro');
@@ -67165,6 +67250,7 @@
 					'It looks like your time machine broke apart, and pieces are strewn across this strange landscape.',
 					'((Click screen to enable/disable mouse look))',
 				]);
+				game.sounds.playMusic('wandering');
 			},
 			stop(game) {
 				game.interface.hideHud();
@@ -67299,6 +67385,7 @@
 		casual1: './audio/music/french-connection-10304.mp3',
 		casual2: './audio/music/message-is-love-11923.mp3',
 		home: './audio/music/long-journey-home-10307.mp3',
+		wandering: './audio/music/Chronosaurus_Wandering_Theme.mp3',
 	};
 
 	const PART_SIZE = 20;
@@ -67333,7 +67420,7 @@
 		{ ...PART, randomAtRadius: 400, model: 'sputnik', heightSizeOffset: -0.5 },
 		{ ...PART, randomAtRadius: 600 },
 		{ ...PART, randomAtRadius: 800, model: 'commandPod', heightSizeOffset: -0.25 },
-		{ ...PART, randomAtRadius: 1000, model: 'sputnik' },
+		{ ...PART, randomAtRadius: 2200, model: 'sputnik' },
 		{ ...PART, randomAtRadius: 2000 },
 		{ ...PART, randomAtRadius: 3000, model: 'sputnik' },
 		{ ...PART, randomAtRadius: 4000, model: 'computer' },
@@ -67377,7 +67464,8 @@
 		},
 	];
 
-	const { X, Y, Z } = ArrayCoords;
+	// const { X, Y, Z } = ArrayCoords;
+	const { Z } = ArrayCoords;
 
 	// Color names from https://coolors.co/99d4e6
 	const DARK_PURPLE = '#352b40';
@@ -67395,21 +67483,21 @@
 		EGGPLANT, // 5
 		EGGPLANT,
 		OLD_ROSE, // 7
-		OLD_ROSE,
+		NON_PHOTO_BLUE,
 		NON_PHOTO_BLUE, // 9
 		NON_PHOTO_BLUE,
 		NON_PHOTO_BLUE,
 		NON_PHOTO_BLUE, // noon
 		NON_PHOTO_BLUE, // 13 (1 pm)
 		NON_PHOTO_BLUE,
-		NON_PHOTO_BLUE,
 		VISTA_BLUE,
-		VISTA_BLUE, // 17 (5pm)
-		VISTA_BLUE, // 18
-		ULTRA_VIOLET, // 19 (7 pm)
-		ULTRA_VIOLET,
-		ULTRA_VIOLET,
-		EGGPLANT, // 2
+		VISTA_BLUE,
+		ULTRA_VIOLET, // 17 (5pm)
+		ULTRA_VIOLET, // 18
+		EGGPLANT, // 19 (7 pm)
+		EGGPLANT,
+		DARK_PURPLE,
+		DARK_PURPLE, // 22
 		DARK_PURPLE, // 23
 		DARK_PURPLE, // 24
 	];
@@ -67428,6 +67516,7 @@
 				WorldClass: DinoWorld,
 				ItemClass: DinoItem,
 				InterfaceClass: DinoInterface,
+				SoundControllerClass: DinoSoundController,
 				// SoundControllerClass: SoundController,
 			});
 			this.pointerLocker = new PointerLocker();
@@ -67442,6 +67531,8 @@
 			this.despawnRadius = this.spawnRadii[1] * 1.5;
 			this.spawnDinos = true;
 			this.timeMachine = null;
+			this.headBop = true;
+			// this.testMode = true;
 		}
 
 		handleCommand(command) {
@@ -67452,7 +67543,7 @@
 				// const spd = 10;
 				// Figure out the relative angle
 				let angleOfMovement = 0;
-				if (commandWords[1] === 'forward') ;
+				if (commandWords[1] === 'forward') angleOfMovement = 0;
 				else if (commandWords[1] === 'back') angleOfMovement += PI$1;
 				else if (commandWords[1] === 'left') angleOfMovement += HALF_PI$1;
 				else if (commandWords[1] === 'right') angleOfMovement -= HALF_PI$1;
@@ -67461,7 +67552,14 @@
 				// const y = spd * Math.cos(angleOfMovement);
 				// mainCharacter.move([x, y, 0]);
 				// this.cameraCoords.position
-				if (this.mainCharacter.grounded) this.sounds.play('footsteps', { random: 0.1 });
+				if (this.mainCharacter.grounded) {
+					// this.sounds.play('footsteps', { random: 0.1 });
+					if (this.tick % 100 === 0) this.sounds.play('footsteps');
+					if (this.headBop) {
+						// TODO: this could be improved, and moved into the Actor class
+						this.mainCharacter.heightSizeOffset = Math.sin(this.tick / 10);
+					}
+				}
 			} else if (firstCommand === 'turn') {
 				let turnAmount = TAU$1 / 50;
 				if (commandWords[1] === 'left') turnAmount *= -1;
@@ -67540,6 +67638,15 @@
 			});
 		}
 
+		getSun() {
+			const hr = this.getWorldHour();
+			// Angle of 0 = fully risen, 12 = fully hidden
+			const sunLightAngle = (((hr / 24) * TAU$1) + PI$1) % TAU$1;
+			// TODO: Change the color of the sun light?
+			// TODO: Set min and max intensity values
+			return { sunLightAngle };
+		}
+
 		assembleRenderData(gameTickData = {}) { // You should overwrite this method
 			const { terrainChunks } = gameTickData;
 			// Assemble data needed to render
@@ -67552,6 +67659,7 @@
 			} = this;
 			const [x, y, z] = mainCharacter.coords;
 			const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
+			const { sunLightAngle } = this.getSun();
 			const sceneUpdateOptions = {
 				terrainChunks,
 				// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
@@ -67559,21 +67667,35 @@
 				cameraRotationGoalArray: [cameraVerticalRotation, 0, mainCharacter.facing - HALF_PI$1],
 				worldCoords: [-x, -y, -z],
 				entities: [...actors, ...items],
-				// clearColor: [0.5, 0.75, 1],
-				clearColor: SKY_COLOR_PER_HOUR[this.getWorldHour()],
-				sunLightAngle: (this.getWorldHour() / 24) * TAU$1,
-				sunLightIntensity: 0.3,
+				// skyColor: [0.5, 0.75, 1],
+				skyColor: SKY_COLOR_PER_HOUR[this.getWorldHour()],
+				sunLightAngle,
 			};
 			const { inventory } = mainCharacter;
 			const scannerItemPercentages = this.calcScannableItemPercentages();
+			const worldTimeArray = [
+				this.getWorldHour(), this.getWorldMinutes(),
+			];
+
+			// if (this.tick % 200 === 0) {
+			// 	console.log(
+			// 		worldTimeArray,
+			// 		// 'hr', this.getWorldHour(),
+			// 		// 'min', this.getWorldMinutes(),
+			// 		'sec', this.worldTime,
+			// 		'sunLightAngle', this.gameScene.sunLightAngle,
+			// 		'intensity', this.gameScene.getSunLightIntensity(),
+			// 	);
+			// }
 			const interfaceUpdates = {
 				actor: mainCharacter,
 				item: iItem,
 				scannerItemPercentages,
 				inventory,
-				debug: {
+				debug: (this.testMode) ? {
 					lastDeltaT: this.lastDeltaT,
-				},
+				} : null,
+				worldTimeArray,
 			};
 			return {
 				sceneUpdateOptions,
@@ -67655,8 +67777,10 @@
 				spirit,
 				inventorySize: PARTS.length,
 				coords: [0, 0, 0],
-				walkForce: 14000,
-				jumpForce: 14000 * 22,
+				// walkForce: 14000,
+				// jumpForce: 14000 * 22,
+				walkForce: 6000,
+				jumpForce: 6000 * 22,
 			});
 			this.buildWorld();
 			const { gameScene } = this;
@@ -67693,15 +67817,16 @@
 			};
 			DinoInterface.$('#start-game-button').addEventListener('click', this.startButtonHandler);
 			const musicCheckbox = DinoInterface.$('#music-checkbox');
-			musicCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
+			this.toggleSoundListener = () => this.toggleSoundBasedOnCheckboxes();
+			musicCheckbox.addEventListener('change', this.toggleSoundListener);
 			const soundCheckbox = DinoInterface.$('#sound-fx-checkbox');
-			soundCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
+			soundCheckbox.addEventListener('change', this.toggleSoundListener);
 		}
 
 		cleanUpMainMenuEvents() {
 			DinoInterface.$('#start-game-button').removeEventListener('click', this.startButtonHandler);
-			DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
-			DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
+			DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleSoundListener);
+			DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundListener);
 		}
 
 		async start() {
@@ -67732,47 +67857,34 @@
 
 	window.ArrayCoords = ArrayCoords;
 
-	function updateMaterial(obj) {
-		obj.material = new MeshStandardMaterial({
-			color: new Color(.5, .2, .1),
-		});
-		obj.needsUpdate = true;
-		window.render();
-	}
-	window.updateMaterial = updateMaterial;
+	// import test from './test.js';
 
-	let game = {};
+	const game = new DinoGame({
+		textures: {
 
-	{
-		game = new DinoGame({
-			textures: {
+		},
+		sounds: {
 
-			},
-			sounds: {
+		},
+		prototypes: {
+			tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
+		},
+		terrainItems: {
 
-			},
-			prototypes: {
-				tree: { rooted: 1, renderAs: 'billboard', texture: 'tree.png' },
-			},
-			terrainItems: {
+		},
+		specialItems: {
 
-			},
-			specialItems: {
+		},
+		actors: {
 
-			},
-			actors: {
+		},
+	});
+	window.document.addEventListener('DOMContentLoaded', () => {
+		game.start();
+	});
+	window.game = game;
+	window.g = game;
 
-			},
-		});
-		window.document.addEventListener('DOMContentLoaded', () => {
-			game.start();
-		});
-		window.game = game;
-		window.g = game;
-	}
-
-	var game$1 = game;
-
-	return game$1;
+	return game;
 
 })();

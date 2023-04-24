@@ -1,6 +1,8 @@
+/* eslint-disable class-methods-use-this */
 import { PseudoRandomizer, ArrayCoords, clamp } from 'rocket-utility-belt';
 import noise from 'noise-esm';
-const { X, Y, Z } = ArrayCoords;
+
+const { X, Y } = ArrayCoords;
 
 class DinoWorld {
 	constructor() {
@@ -62,7 +64,9 @@ class DinoWorld {
 		h += DinoWorld.calcNoiseHeight(x, y, 0.02, roughness);
 
 		// Add ripples (negative for erosion)
-		h -= 20 * (1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0)));
+		h -= 20 * (
+			1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0))
+		);
 		h = clamp(h, minHeight, maxHeight);
 		// h += DinoWorld.calcNoiseHeight(x, y, 0.00021, 200);
 		// this.validateNumbers({ h, h2 });
