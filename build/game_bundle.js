@@ -166,7 +166,7 @@
 			if (typeof v !== 'number') throw new Error('Cannot set to a non-number');
 			const ogValue = this.value;
 			this.value = Math.max(Math.min(this.max, v), this.min);
-			this.lastDelta = this.value - ogValue;
+			this.lastDelta += this.value - ogValue;
 			return this.value;
 		}
 
@@ -61953,7 +61953,7 @@
 				// sceneObj = model.object.clone();
 				sceneObj = this.modelMgr.makeNewObject(entity.model);
 				sceneObj.userData.modelName = entity.model;
-				this.modelMgr.playClip(sceneObj, 0);
+				// this.modelMgr.playClip(sceneObj, 0);
 				// console.log(sceneObj.userData);
 			}
 			// sceneObj.castShadow = true;
@@ -65472,6 +65472,10 @@
 			this.size = 2;
 			this.lookLength = 30;
 			this.remove = false;
+			this.setProperties(properties);
+		}
+
+		setProperties(properties = {}) {
 			Object.keys(properties).forEach((key) => {
 				this[key] = JSON.parse(JSON.stringify(properties[key]));
 			});
@@ -65782,6 +65786,9 @@
 	const TAU = PI * 2;
 	const HALF_PI = PI / 2;
 	const MAX_ACTORS = 5000;
+	const SECONDS_PER_HOUR = 60 * 60;
+	const SECONDS_PER_DAY = SECONDS_PER_HOUR * 24;
+	const START_WORLD_TIME = 60 * 60 * 10; // 10 AM, in seconds
 
 	class GenericGame extends StateCommander {
 		constructor(options = {}) {
@@ -65797,8 +65804,10 @@
 				maxMouseWheel = 100,
 				sounds = {},
 				music = {},
+				startWorldTime, // optional
 			} = options;
 			super({ states });
+			this.lastDeltaT = 0; // just for debug/tracking purposes
 			this.minMouseWheel = minMouseWheel;
 			this.maxMouseWheel = maxMouseWheel;
 			this.loop = new Looper();
@@ -65814,6 +65823,8 @@
 			this.actors = [];
 			this.items = [];
 			this.tick = 0;
+			this.worldTime = startWorldTime || START_WORLD_TIME; // In seconds
+			this.worldTimePerGameTime = 200;
 		}
 
 		render(renderData = {}, t = 5) {
@@ -65826,10 +65837,16 @@
 			this.gameScene.update(sceneUpdateOptions, t).render();
 		}
 
-		gameTick() { // You should overwrite this method
+		gameTick(t) { // You should overwrite this method
 			this.tick += 1;
 			if (this.tick > 1000000) this.tick = 0;
+			const deltaTWorldTime = (t / 1000) * this.worldTimePerGameTime;
+			this.worldTime = (this.worldTime + deltaTWorldTime) % SECONDS_PER_DAY;
 			return {};
+		}
+
+		getWorldHour() {
+			return Math.floor(this.worldTime / SECONDS_PER_HOUR);
 		}
 
 		assembleRenderData(gameTickData = {}) { // You should overwrite this method
@@ -65841,6 +65858,7 @@
 		animationTick(deltaT) {
 			// Clamp the value to 100 ms so that it doesn't go overboard if the
 			// animation doesn't run in a long time
+			this.lastDeltaT = deltaT; // just for debug/tracking purposes
 			const t = clamp$2(deltaT, 0, 100);
 			const gameTickData = this.gameTick(t);
 			const renderData = this.assembleRenderData(gameTickData);
@@ -65870,16 +65888,14 @@
 			return { player, spirit };
 		}
 
-		makeCharacter(spiritId) {
-			const character = new this.ActorClass({
-				spiritId,
-			});
+		makeCharacter(charProperties) {
+			const character = new this.ActorClass(charProperties);
 			character.isCharacter = true;
 			return character;
 		}
 
-		addNewCharacter(...args) {
-			const character = this.makeCharacter(...args);
+		addNewCharacter(charProperties) {
+			const character = this.makeCharacter(charProperties);
 			this.actors.push(character);
 			return character;
 		}
@@ -65913,7 +65929,7 @@
 
 		/** Returns an array of (0) the distance to the nearest thing, and (1) the thing */
 		static findNearest(arr, coords, filterFn) {
-			return arr.reduce((previousValue, thing) => {
+			const nearest = arr.reduce((previousValue, thing) => {
 				// if there's a filter function defined, then use it to
 				// skip considering certain things
 				if (filterFn && !filterFn(thing)) return previousValue;
@@ -65921,14 +65937,15 @@
 				const distance = ArrayCoords.getDistance(thing.coords, coords);
 				return (distance < nearestSoFar) ? [distance, thing] : previousValue;
 			}, [Infinity, null]);
+			return nearest;
 		}
 
-		findNearestActor(coords) {
-			return GenericGame.findNearest(this.actors, coords);
+		findNearestActor(coords, filterFn) {
+			return GenericGame.findNearest(this.actors, coords, filterFn);
 		}
 
-		findNearestItem(coords) {
-			return GenericGame.findNearest(this.items, coords);
+		findNearestItem(coords, filterFn) {
+			return GenericGame.findNearest(this.items, coords, filterFn);
 		}
 
 		/** Find all items that are interactable (not necessary within range though) */
@@ -66342,6 +66359,7 @@
 			// of the terrain has +1 vertex compared to the # of segments
 			this.terrainChunkVertexSize = this.terrainSegmentsPerChunk + 1;
 			this.terrainChunksCache = {};
+			this.terrainColor = '#76c379';
 		}
 
 		validateNumbers(objOfValues, ...args) {
@@ -66484,7 +66502,7 @@
 			// document.getElementById('map').innerHTML = '';
 			// document.getElementById('map').appendChild(image);
 			return {
-				color: (chunkCoords[X$1] - chunkCoords[Y$1] === 0) ? 0x55ffbb : 0x66eeaa,
+				color: this.terrainColor, // (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
 				textureImage: image,
 				image,
 				heights,
@@ -66537,29 +66555,49 @@
 			this.physics = true;
 			this.mass = 60; // kg
 			this.stamina = new Pool(50, 50);
+			this.staminaRegenPerSecond = 5;
+			this.staminaUsePerWalk = 0.2;
+			this.health = new Pool(50, 50);
+			this.healthRegenPerSecond = 2;
+			this.tiredMultiplier = 0.5;
 			this.emotions = [];
 			this.spiritId = options.spiritId;
 			this.isActor = true;
-			this.moveTarget = [0, 0, 0];
+			this.lookTargetEntity = null;
+			this.lookTargetDistance = Infinity;
+			this.currentPlan = { name: 'rest', moveTarget: null };
 			this.cooldowns = {
 				planning: 0,
+				looking: 0,
 				//
 			};
+			// this.lookDistance = 1000;
+			this.huntDistance = 0; // Goes aggro if hungry and has stamina
+			this.attentionDistance = 900; // Turns and looks
+			this.fleeDistance = 0; // run away
 			this.maxWanderRange = 1000;
-			this.turnSpeed = TAU$1 / 1000; // one rotation in 1000 ms (1 second)
-			this.walkForce = this.walkForce || 800;
+			this.turnSpeed = TAU$1 / 1000; // (radians/ms) one rotation in 1000 ms (1 second)
+			this.walkForce = 1200;
+			this.jumpForce = this.walkForce * 20;
+			this.setProperties(options);
 		}
 
 		jump() {
 			if (!this.grounded) return false;
-			this.applyForce([0, 0, 140000]);
+			let { jumpForce } = this;
+			if (this.stamina.atMin()) jumpForce *= this.tiredMultiplier;
+			this.applyForce([0, 0, jumpForce]);
 			return true;
 		}
 
 		walk(directionOffset = 0, multiplier = 1) {
+			let { walkForce } = this;
+			walkForce *= multiplier;
 			// it feels good to walk in the air (a little bit at least)
-			const m = ((this.grounded) ? 1 : 0.2) * multiplier;
-			this.applyMovementForce(this.walkForce * m, directionOffset);
+			if (!this.grounded) walkForce *= 0.2;
+			if (this.stamina.atMin()) walkForce *= this.tiredMultiplier;
+			this.applyMovementForce(walkForce, directionOffset);
+			this.stamina.subtract(this.staminaUsePerWalk);
 		}
 
 		heatUp(name, seconds) {
@@ -66571,49 +66609,112 @@
 			if (this.cooldowns[name] < 0) this.cooldowns[name] = 0;
 		}
 
-		updateTimers(t) {
-			const seconds = t / 1000;
-			['planning'].forEach((cdName) => {
+		updateTimers(seconds = 0) {
+			Object.keys(this.cooldowns).forEach((cdName) => {
 				this.coolDown(cdName, seconds);
 			});
+		}
+
+		regenerate(seconds = 0) {
+			if (!this.movementForce) {
+				const stamHeal = this.staminaRegenPerSecond * seconds;
+				this.stamina.add(stamHeal);
+			}
+			const healthHeal = this.healthRegenPerSecond * seconds;
+			this.health.add(healthHeal);
 		}
 
 		updateEmotions() {
 
 		}
 
-		updateLook() {
+		updateLook(t, gameWorld) {
 			if (!this.autonomous) return 0;
+			// Look for a new target?
+			if (this.cooldowns.looking) return 0;
+			// Reset look - assume no target
+			this.lookTargetEntity = null;
+			this.lookTargetDistance = Infinity;
+			this.heatUp('looking', 1);
+			// Do the look in the game world
+			const filter = (actor) => (actor.faction !== this.faction && actor.entityId !== this.entityId);
+			const [dist, who] = gameWorld.findNearestActor(this.coords, filter);
+			if (!who) return 0;
+			if (dist < this.fleeDistance) {
+				console.log(this.name, 'wants to flee');
+				// TODO: run away
+				// this.heatUp('planning', 3);
+			} else if (dist < this.attentionDistance
+				|| dist < this.huntDistance
+			) {
+				this.lookTargetEntity = who;
+				// console.log(this.name, 'wants to look at', who.coords);
+			}
 		}
 
 		updatePlan() {
-			if (!this.autonomous) return 0;
-			if (this.cooldowns.planning) return 0;
+			if (!this.autonomous) return null;
+			if (this.cooldowns.planning) return null;
+			if (this.stamina.atMin()) {
+				// Just rest
+				this.heatUp('planning', 30);
+				return { name: 'rest', moveTarget: null };
+			}
+			// Plan based on distances
+			const { lookTargetDistance } = this;
+			if (lookTargetDistance < this.fleeDistance) {
+				const angleToThreat = ArrayCoords.getAngleFacing(this.coords, this.lookTargetEntity.coords);
+				const angleAway = (angleToThreat + PI$1) % TAU$1;
+				const moveTarget = ArrayCoords.polarToCartesian(this.fleeDistance, angleAway);
+				return { name: 'flee', moveTarget };
+			}
+			if (lookTargetDistance < this.huntDistance) {
+				this.heatUp('planning', 1); // re-plan soon so we can follow
+				this.moveTarget = [...this.lookTargetEntity.coords];
+				return { name: 'hunt', moveTarget: null };
+			}
+			if (lookTargetDistance < this.attentionDistance && Random.chance(0.5)) {
+				return { name: 'watch', moveTarget: null };
+			}
 			if (this.wandering) {
 				const deltaX = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 				const deltaY = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
-				this.moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
+				const moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
 				this.heatUp('planning', 30);
+				return { name: 'wander', moveTarget };
 				// console.log(this.name, 'planning a wander');
 			}
 		}
 
-		updateMovement(t) {
-			if (!this.mobile || !this.autonomous) return 0;
-			const distanceToTarget = ArrayCoords.getDistance(this.coords, this.moveTarget);
-			if (distanceToTarget < CLOSE_ENOUGH) return 0;
-			const maxTurnRadians = t * this.turnSpeed;
-			const remainderToTurn = this.turnToward(this.moveTarget, maxTurnRadians);
-			const speedFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
-			if (remainderToTurn < 0.2) this.walk(0, speedFraction);
+		updateMovement(t, moveTarget) {
+			if (!this.mobile || !this.autonomous) return;
+			if (!moveTarget) {
+				if (this.lookTargetEntity) {
+					this.turnToward(this.lookTargetEntity.coords, t * this.turnSpeed);
+				}
+				return;
+			}
+			const distanceToTarget = ArrayCoords.getDistance(this.coords, moveTarget);
+			if (distanceToTarget < CLOSE_ENOUGH) return;
+			// Do things slower if we're near the destination
+			const proximityFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
+			// Don't turn faster than your turn speed
+			const maxTurnRadians = t * this.turnSpeed * proximityFraction;
+			const remainderToTurn = this.turnToward(moveTarget, maxTurnRadians);
+			// Don't walk until we've turned
+			if (remainderToTurn < 0.2) this.walk(0, proximityFraction);
 		}
 
-		update(t, world) {
-			this.updateTimers(t);
+		update(t, world, game) {
+			const seconds = t / 1000;
+			this.health.clearLastDelta(); // TODO: move this somewhere else?
+			this.regenerate(seconds);
+			this.updateTimers(seconds);
 			this.updateEmotions(t);
-			this.updateLook(t);
-			this.updatePlan(t);
-			this.updateMovement(t);
+			this.updateLook(t, game);
+			const newPlan = this.updatePlan(t);
+			if (newPlan) this.currentPlan = newPlan;
+			this.updateMovement(t, this.currentPlan.moveTarget);
 			this.updatePhysics(t);
 		}
 	}
@@ -66700,21 +66801,28 @@
 		}
 	}
 
+	/* eslint-disable class-methods-use-this */
+
 	const SHOW_CLASS = 'ui-show';
 	const HIDE_CLASS = 'ui-hide';
+
+	function round(n = 0, m = 100) {
+		return Math.round(n * m) / m;
+	}
 
 	class DinoInterface {
 		constructor() {
 			this.log = [];
 			this.lastDisplayedLogLength = 0;
 			this.logShow = 3;
+			this.borderSelector = '#hud';
 		}
 
 		static $(selector) {
 			const elt = window.document.querySelector(selector);
 			if (!elt) console.warn('Could not find', selector);
 			return elt;
-		};
+		}
 
 		static setText(selector, text) {
 			const elt = DinoInterface.$(selector);
@@ -66770,10 +66878,26 @@
 
 		hideHud() { DinoInterface.hide('#hud'); }
 
+		showDead() { DinoInterface.show('#dead'); }
+
+		hideDead() { DinoInterface.hide('#dead'); }
+
 		addToLog(messages) {
 			if (!messages || !messages.length) return;
 			if (messages instanceof Array) this.log = this.log.concat(messages);
 			else this.log.push(messages); // string hopefully
+		}
+
+		flashBorder(color = '#f00', duration = 1000) {
+			const elt = DinoInterface.$(this.borderSelector);
+			const keyFrames = [ // Keyframes
+				{ borderColor: color },
+				{ borderColor: 'transparent' },
+			];
+			const keyFrameSettings = { duration, direction: 'alternate', easing: 'linear' };
+			const effect = new KeyframeEffect(elt, keyFrames, keyFrameSettings);
+			const animation = new Animation(effect, document.timeline);
+			animation.play();
 		}
 
 		updateInteraction(item) {
@@ -66789,10 +66913,11 @@
 			DinoInterface.setText('#interaction-action-name', actionText);
 		}
 
-		updateDebug(actor) {
+		updateDebug(debug, actor) {
 			const html = `
-			Vel: ${actor.vel.map((v) => Math.round(v * 100) / 100).join('<br>')}<br>
-			Pos: ${actor.coords.map((v) => Math.round(v * 100) / 100).join('<br>')}<br>
+			Last delta T: ${round(debug.lastDeltaT)}<br>
+			Vel: ${actor.vel.map((v) => round(v)).join('<br>')}<br>
+			Pos: ${actor.coords.map((v) => round(v)).join('<br>')}<br>
 			Grounded: ${actor.grounded}
 		`;
 			DinoInterface.setHtml('#debug', html);
@@ -66800,7 +66925,7 @@
 
 		updateScanner(scannerItemPercentages = []) {
 			const numbers = scannerItemPercentages
-				.map((n) => Math.max(1, Math.round(10000 * n) / 100)) // No less than 1%, and round to .00
+				.map((n) => Math.max(1, round(100 * n))) // No less than 1%, and round to .00
 				.sort((a, b) => (a - b));
 			const listItems = numbers.map((n) => `<li class="scan-bar" style="height: ${n}%;"><span>${n}</span></li>`);
 			DinoInterface.setHtml('#scans', listItems.join(''));
@@ -66819,12 +66944,27 @@
 			DinoInterface.setHtml('#inv-list', listItems.join(''));
 		}
 
+		updateStats(actor) { // actor is main character
+			const statBars = [
+				{ name: 'stamina', value: actor.stamina.get(), barClass: 'stat-bar-stamina' },
+				{ name: 'health', value: actor.health.get(), barClass: 'stat-bar-health' },
+			];
+			const listItems = statBars.map((bar) => `<li class="stat-bar ${bar.barClass}" style="height: ${bar.value}%;">
+			<span>${bar.name} ${bar.value}</span>
+		</li>`);
+			DinoInterface.setHtml('#stat-list', listItems.join(''));
+			if (actor.health.lastDelta < 0) {
+				this.flashBorder('#933f45');
+			}
+		}
+
 		render(interfaceUpdates = {}) {
-			const { item, actor, scannerItemPercentages, inventory } = interfaceUpdates;
+			const { item, actor, scannerItemPercentages, inventory, debug } = interfaceUpdates;
 			this.updateLog();
-			// this.updateDebug(actor);
+			// this.updateDebug(debug, actor);
 			this.updateInteraction(item);
 			this.updateScanner(scannerItemPercentages);
+			this.updateStats(actor);
 			this.updateLog();
 			this.updateInventory(inventory);
 		}
@@ -66923,6 +67063,8 @@
 		},
 	};
 
+	const INTRO_TIME = 7000;
+
 	const states = {
 		loading: {
 			start: async (game) => {
@@ -66950,10 +67092,12 @@
 				game.interface.showMainMenu();
 				game.interface.hide('#menu');
 				game.interface.show('#main-menu-loading');
-				await game.setup();
+				game.toggleSoundBasedOnCheckboxes();
 				game.setupMainMenuEvents();
+				await game.setup();
 				game.interface.hide('#main-menu-loading');
 				game.interface.show('#menu');
+				// game.transition('explore'); // For testing
 			},
 			stop(game) {
 				game.interface.hideMainMenu();
@@ -66961,15 +67105,25 @@
 			},
 		},
 		intro: {
+			keyboardMapping: {
+				Esc: 'exit', // TODO: make this work
+				//
+			},
 			start(game) {
 				const song = game.sounds.playMusic('panic');
-				song.seek(65).fade(0, 0.75, 500);
+				if (song) song.seek(65).fade(0, 0.75, 500);
 				game.interface.show('#intro');
-				setTimeout(() => game.transition('explore'), 10000);
+				setTimeout(() => game.transition('explore'), INTRO_TIME);
 			},
 			stop(game) {
 				game.interface.hide('#intro');
+				// If this state transitions too quick, it's possible the music never fades out
+				// TODO: Move this fadeOut method into sound controller lib
 				if (game.sounds.musicNowPlaying) game.sounds.musicNowPlaying.fade(0.75, 0, 5000);
+				game.sounds.play('explode');
+				game.sounds.play('explode', { delay: 1000 });
+				game.sounds.play('explode', { delay: 2500 });
+				game.sounds.play('scary');
 			},
 		},
 		explore: {
@@ -66984,10 +67138,6 @@
 				' ': 'jump',
 			},
 			async start(game) {
-				game.sounds.play('scary');
-				game.sounds.play('explode');
-				game.sounds.play('explode', { delay: 1000 });
-				game.sounds.play('explode', { delay: 2500 });
 				game.interface.showHud();
 				game.setupMouseMove();
 				game.startAnimationGameLoop();
@@ -67006,7 +67156,18 @@
 			// TBD
 		},
 		dead: {
-			// TBD
+			start(game) {
+				game.sounds.play('scary');
+				game.interface.showDead();
+				setTimeout(() => {
+					game.mainCharacter.coords = [0, 0, 0]; // eslint-disable-line no-param-reassign
+					game.sounds.play('teleport');
+					game.transition('explore');
+				}, 5000);
+			},
+			stop(game) {
+				game.interface.hideDead();
+			},
 		},
 		win: {
 			start: async (game) => {
@@ -67017,6 +67178,69 @@
 			stop: (game) => {
 				game.interface.hideWin();
 			},
+		},
+	};
+
+	const defaultDino = {
+		name: 'Dino',
+		autonomous: true,
+		isDinosaur: true,
+		wandering: true,
+		size: 60,
+		heightSizeOffset: 0,
+		// color: [randColor(), randColor(), randColor()],
+		walkForce: 10000,
+		mass: 10000,
+		attentionDistance: 1000,
+		fleeDistance: 0,
+		huntDistance: 0,
+		renderAs: 'model', // renderAs: 'sphere',
+	};
+	const dinos = {
+		apat: {
+			...defaultDino,
+			model: 'apat',
+			faction: 'herbivore',
+			name: 'Dino apat',
+			mass: 20000,
+			turnSpeed: TAU$1 / 3000,
+		},
+		para: {
+			...defaultDino,
+			model: 'para',
+			faction: 'herbivore',
+			name: 'Dino para',
+			mass: 6000,
+		},
+		steg: {
+			...defaultDino,
+			model: 'steg',
+			faction: 'herbivore',
+			name: 'Dino steg',
+			mass: 10000,
+		},
+		trex: {
+			...defaultDino,
+			model: 'trex',
+			faction: 'trex',
+			name: 'Dino trex',
+			mass: 12000,
+			huntDistance: 500,
+		},
+		tric: {
+			...defaultDino,
+			model: 'tric',
+			faction: 'tric',
+			name: 'Dino tric',
+			mass: 10000,
+		},
+		velo: {
+			...defaultDino,
+			model: 'velo',
+			faction: 'velo',
+			name: 'Dino velo',
+			mass: 5000,
+			huntDistance: 500,
 		},
 	};
 
@@ -67107,7 +67331,7 @@
 	// - scanning visor --- provides a wireframe view with things highlighted
 	// - drone --- provides a mobile viewing system
 	// - laser gun
-	const PARTS_NEEDED = 1;
+	const PARTS_NEEDED = 8;
 	const ITEMS = [
 		...PARTS,
 		{
@@ -67134,16 +67358,40 @@
 
 	const { X, Y, Z } = ArrayCoords;
 
-	const DINO_MODEL_KEYS = [
-		'apat',
-		'para',
-		'steg',
-		'trex',
-		'tric',
-		'velo',
+	// Color names from https://coolors.co/99d4e6
+	const DARK_PURPLE = '#352b40';
+	const EGGPLANT = '#653d48';
+	const OLD_ROSE = '#be7979';
+	const NON_PHOTO_BLUE = '#99d4e6';
+	const VISTA_BLUE = '#7b99c8';
+	const ULTRA_VIOLET = '#535c89';
+	const SKY_COLOR_PER_HOUR = [
+		DARK_PURPLE, // 0
+		DARK_PURPLE, // 1
+		DARK_PURPLE,
+		DARK_PURPLE,
+		DARK_PURPLE,
+		EGGPLANT, // 5
+		EGGPLANT,
+		OLD_ROSE, // 7
+		OLD_ROSE,
+		NON_PHOTO_BLUE, // 9
+		NON_PHOTO_BLUE,
+		NON_PHOTO_BLUE,
+		NON_PHOTO_BLUE, // noon
+		NON_PHOTO_BLUE, // 13 (1 pm)
+		NON_PHOTO_BLUE,
+		NON_PHOTO_BLUE,
+		VISTA_BLUE,
+		VISTA_BLUE, // 17 (5pm)
+		VISTA_BLUE, // 18
+		ULTRA_VIOLET, // 19 (7 pm)
+		ULTRA_VIOLET,
+		ULTRA_VIOLET,
+		EGGPLANT, // 2
+		DARK_PURPLE, // 23
+		DARK_PURPLE, // 24
 	];
-
-
 
 	class DinoGame extends GenericGame {
 		constructor() {
@@ -67165,7 +67413,7 @@
 			this.cameraPosition = [0, 0, 0];
 			this.cameraVerticalRotation = HALF_PI$1;
 			// How spaced-out do you want the spawned actors
-			this.spawnActorDistance = 900;
+			this.spawnActorDistance = 1000;
 			// Min spawn distance should be greater than the sight view of enemies so that they
 			// don't spawn and instantly attack.
 			// Max spawn distance should be somwhat similar to half the size of all the chunks being shown
@@ -67228,10 +67476,17 @@
 			return win;
 		}
 
+		checkDead() {
+			const dead = this.mainCharacter.health.atMin();
+			if (dead) this.transition('dead');
+			return dead;
+		}
+
 		gameTick(t) {
 			super.gameTick(t);
 
 			if (this.checkWin()) return { terrainChunks: [] };
+			this.checkDead();
 
 			if (this.tick % 300 === 0 && this.spawnDinos) {
 				this.addNewDino();
@@ -67250,7 +67505,7 @@
 			const chunkRadius = Math.min(0 + Math.floor(this.tick / 50), 3);
 			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 			// Update actors
-			actors.forEach((actor) => actor.update(t, this.world));
+			actors.forEach((actor) => actor.update(t, this.world, this));
 			actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
 			return { terrainChunks };
 		}
@@ -67283,7 +67538,10 @@
 				cameraRotationGoalArray: [cameraVerticalRotation, 0, mainCharacter.facing - HALF_PI$1],
 				worldCoords: [-x, -y, -z],
 				entities: [...actors, ...items],
-				clearColor: [0.5, 0.75, 1],
+				// clearColor: [0.5, 0.75, 1],
+				clearColor: SKY_COLOR_PER_HOUR[this.getWorldHour()],
+				sunLightAngle: (this.getWorldHour() / 24) * TAU$1,
+				sunLightIntensity: 0.3,
 			};
 			const { inventory } = mainCharacter;
 			const scannerItemPercentages = this.calcScannableItemPercentages();
@@ -67292,6 +67550,9 @@
 				item: iItem,
 				scannerItemPercentages,
 				inventory,
+				debug: {
+					lastDeltaT: this.lastDeltaT,
+				},
 			};
 			return {
 				sceneUpdateOptions,
@@ -67299,32 +67560,38 @@
 			};
 		}
 
-		addNewDino() {
+		getRandomSpawnCoords() {
 			const [minRadius, maxRadius] = this.spawnRadii;
 			const r = minRadius + Random.randomInt(maxRadius - minRadius);
 			const angle = Random.randomAngle();
 			const [x, y] = ArrayCoords.polarToCartesian(r, angle);
-			const coords = ArrayCoords.add(this.mainCharacter.coords, [x, y, 0]);
+			return ArrayCoords.add(this.mainCharacter.coords, [x, y, 0]);
+		}
+
+		addNewDino() {
+			const coords = this.getRandomSpawnCoords();
 			const [distance] = this.findNearestActor(coords);
 			if (distance < this.spawnActorDistance) return null;
-			const randColor = () => (0.5 + (Random.random() * 0.5));
-			const model = Random.pick(DINO_MODEL_KEYS);
-			const dinoOpt = {
-				name: 'Dino',
-				autonomous: true,
-				isDinosaur: true,
-				wandering: true,
-				size: 60,
-				color: [randColor(), randColor(), randColor()],
-				turnSpeed: TAU$1 / 3000,
-				mass: 10000,
-				// renderAs: 'sphere',
-				renderAs: 'model',
-				model,
-			};
+			// const randColor = () => (0.5 + (Random.random() * 0.5));
+			const dinoKey = Random.pick(Object.keys(dinos));
+			const dinoOpt = dinos[dinoKey];
+			// 	name: 'Dino',
+			// 	autonomous: true,
+			// 	isDinosaur: true,
+			// 	wandering: true,
+			// 	size: 60,
+			// 	heightSizeOffset: 0,
+			// 	color: [randColor(), randColor(), randColor()],
+			// 	turnSpeed: TAU / 3000,
+			// 	walkForce: 10000,
+			// 	mass: 10000,
+			// 	// renderAs: 'sphere',
+			// 	renderAs: 'model',
+			// 	model,
+			// };
 			const dino = this.addNewActor(dinoOpt);
 			dino.coords = coords;
-			console.log('Added dino', dino, model);
+			console.log('Added dino', dinoOpt);
 			return dino;
 		}
 
@@ -67333,6 +67600,15 @@
 		}
 
 		addNewTree() {
+			const coords = this.getRandomSpawnCoords();
+			this.addNewItem({
+				isTree: true,
+				color: Random.pick(['#76c379', '#508d76']),
+				renderAs: 'model',
+				model: 'royalPalm',
+				coords,
+				rooted: true,
+			});
 			// TODO:
 			// Create random tree and find a location
 			// Add a despawnRadius
@@ -67343,21 +67619,24 @@
 			ITEMS.forEach((itemData) => {
 				this.addNewItem(itemData);
 			});
+			this.addNewTrees(30);
 			this.items.forEach((item) => {
 				if (item.rooted) {
 					this.setHeightToTerrain(item, this.world);
 				}
 				if (item.isTimeMachine) this.timeMachine = item;
 			});
-			this.addNewTrees(30);
 		}
 
 		async setup() {
 			const { spirit } = this.addNewPlayer();
-			this.mainCharacter = this.addNewCharacter(spirit);
-			this.mainCharacter.inventorySize = PARTS.length;
-			this.mainCharacter.coords = [0, 0, 0];
-			this.mainCharacter.walkForce = 12000;
+			this.mainCharacter = this.addNewCharacter({
+				spirit,
+				inventorySize: PARTS.length,
+				coords: [0, 0, 0],
+				walkForce: 14000,
+				jumpForce: 14000 * 22,
+			});
 			this.buildWorld();
 			const { gameScene } = this;
 			await gameScene.setup([0, 100, 100]);
@@ -67380,30 +67659,28 @@
 			this.pointerLocker.off('lockedMouseMove', this.mouseHandler);
 		}
 
+		toggleSoundBasedOnCheckboxes() {
+			const musicCheckbox = DinoInterface.$('#music-checkbox');
+			const soundCheckbox = DinoInterface.$('#sound-fx-checkbox');
+			this.sounds.turnMusicOn(musicCheckbox.checked);
+			this.sounds.turnSoundsOn(soundCheckbox.checked);
+		}
+
 		setupMainMenuEvents() {
 			this.startButtonHandler = () => {
 				this.transition('intro');
 			};
 			DinoInterface.$('#start-game-button').addEventListener('click', this.startButtonHandler);
 			const musicCheckbox = DinoInterface.$('#music-checkbox');
-			this.toggleMusicHandler = () => {
-				const { checked } = musicCheckbox;
-				this.sounds.turnMusicOn(checked);
-			};
-			musicCheckbox.addEventListener('change', this.toggleMusicHandler);
+			musicCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
 			const soundCheckbox = DinoInterface.$('#sound-fx-checkbox');
-			this.toggleSoundHandler = () => {
-				const { checked } = soundCheckbox;
-				this.sounds.turnSoundsOn(checked);
-				if (this.sounds.isSoundsOn) this.sounds.play('beep');
-			};
-			soundCheckbox.addEventListener('change', this.toggleSoundHandler);
+			soundCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
 		}
 
 		cleanUpMainMenuEvents() {
 			DinoInterface.$('#start-game-button').removeEventListener('click', this.startButtonHandler);
-			DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleMusicHandler);
-			DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundHandler);
+			DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
+			DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
 		}
 
 		async start() {
@@ -67417,9 +67694,12 @@
 			// gameScene.addBox();
 			// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
 
+			// this.addNewDino();
+			// this.addNewDino();
+
 			// const testDino = this.addNewDino();
-			// testDino.autonomous = false;
-			// testDino.mobile = false;
+			// // testDino.autonomous = true;
+			// // testDino.mobile = false;
 			// testDino.coords = [200, 0, 40];
 			// // testDino.physics = false;
 			// testDino.setFacing(0);

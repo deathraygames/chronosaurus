@@ -1,3 +1,5 @@
+const INTRO_TIME = 7000;
+
 const states = {
 	loading: {
 		start: async (game) => {
@@ -25,10 +27,12 @@ const states = {
 			game.interface.showMainMenu();
 			game.interface.hide('#menu');
 			game.interface.show('#main-menu-loading');
-			await game.setup();
+			game.toggleSoundBasedOnCheckboxes();
 			game.setupMainMenuEvents();
+			await game.setup();
 			game.interface.hide('#main-menu-loading');
 			game.interface.show('#menu');
+			// game.transition('explore'); // For testing
 		},
 		stop(game) {
 			game.interface.hideMainMenu();
@@ -36,15 +40,25 @@ const states = {
 		},
 	},
 	intro: {
+		keyboardMapping: {
+			Esc: 'exit', // TODO: make this work
+			//
+		},
 		start(game) {
 			const song = game.sounds.playMusic('panic');
-			song.seek(65).fade(0, 0.75, 500);
+			if (song) song.seek(65).fade(0, 0.75, 500);
 			game.interface.show('#intro');
-			setTimeout(() => game.transition('explore'), 10000);
+			setTimeout(() => game.transition('explore'), INTRO_TIME);
 		},
 		stop(game) {
 			game.interface.hide('#intro');
+			// If this state transitions too quick, it's possible the music never fades out
+			// TODO: Move this fadeOut method into sound controller lib
 			if (game.sounds.musicNowPlaying) game.sounds.musicNowPlaying.fade(0.75, 0, 5000);
+			game.sounds.play('explode');
+			game.sounds.play('explode', { delay: 1000 });
+			game.sounds.play('explode', { delay: 2500 });
+			game.sounds.play('scary');
 		},
 	},
 	explore: {
@@ -59,10 +73,6 @@ const states = {
 			' ': 'jump',
 		},
 		async start(game) {
-			game.sounds.play('scary');
-			game.sounds.play('explode');
-			game.sounds.play('explode', { delay: 1000 });
-			game.sounds.play('explode', { delay: 2500 });
 			game.interface.showHud();
 			game.setupMouseMove();
 			game.startAnimationGameLoop();
@@ -81,7 +91,18 @@ const states = {
 		// TBD
 	},
 	dead: {
-		// TBD
+		start(game) {
+			game.sounds.play('scary');
+			game.interface.showDead();
+			setTimeout(() => {
+				game.mainCharacter.coords = [0, 0, 0]; // eslint-disable-line no-param-reassign
+				game.sounds.play('teleport');
+				game.transition('explore');
+			}, 5000);
+		},
+		stop(game) {
+			game.interface.hideDead();
+		},
 	},
 	win: {
 		start: async (game) => {

@@ -9,6 +9,7 @@ import DinoItem from './DinoItem.js';
 import DinoInterface from './DinoInterface.js';
 import models from './models.js';
 import states from './states.js';
+import dinos from './dinos.js';
 import { sounds, music } from './soundsAndMusic.js';
 
 const PART_SIZE = 20;
@@ -61,7 +62,7 @@ const PARTS = [
 // - scanning visor --- provides a wireframe view with things highlighted
 // - drone --- provides a mobile viewing system
 // - laser gun
-const PARTS_NEEDED = 1;
+const PARTS_NEEDED = 8;
 const ITEMS = [
 	...PARTS,
 	{
@@ -88,16 +89,40 @@ const ITEMS = [
 
 const { X, Y, Z } = ArrayCoords;
 
-const DINO_MODEL_KEYS = [
-	'apat',
-	'para',
-	'steg',
-	'trex',
-	'tric',
-	'velo',
+// Color names from https://coolors.co/99d4e6
+const DARK_PURPLE = '#352b40';
+const EGGPLANT = '#653d48';
+const OLD_ROSE = '#be7979';
+const NON_PHOTO_BLUE = '#99d4e6';
+const VISTA_BLUE = '#7b99c8';
+const ULTRA_VIOLET = '#535c89';
+const SKY_COLOR_PER_HOUR = [
+	DARK_PURPLE, // 0
+	DARK_PURPLE, // 1
+	DARK_PURPLE,
+	DARK_PURPLE,
+	DARK_PURPLE,
+	EGGPLANT, // 5
+	EGGPLANT,
+	OLD_ROSE, // 7
+	OLD_ROSE,
+	NON_PHOTO_BLUE, // 9
+	NON_PHOTO_BLUE,
+	NON_PHOTO_BLUE,
+	NON_PHOTO_BLUE, // noon
+	NON_PHOTO_BLUE, // 13 (1 pm)
+	NON_PHOTO_BLUE,
+	NON_PHOTO_BLUE,
+	VISTA_BLUE,
+	VISTA_BLUE, // 17 (5pm)
+	VISTA_BLUE, // 18
+	ULTRA_VIOLET, // 19 (7 pm)
+	ULTRA_VIOLET,
+	ULTRA_VIOLET,
+	EGGPLANT, // 2
+	DARK_PURPLE, // 23
+	DARK_PURPLE, // 24
 ];
-
-
 
 class DinoGame extends GenericGame {
 	constructor() {
@@ -119,7 +144,7 @@ class DinoGame extends GenericGame {
 		this.cameraPosition = [0, 0, 0];
 		this.cameraVerticalRotation = HALF_PI;
 		// How spaced-out do you want the spawned actors
-		this.spawnActorDistance = 900;
+		this.spawnActorDistance = 1000;
 		// Min spawn distance should be greater than the sight view of enemies so that they
 		// don't spawn and instantly attack.
 		// Max spawn distance should be somwhat similar to half the size of all the chunks being shown
@@ -182,10 +207,17 @@ class DinoGame extends GenericGame {
 		return win;
 	}
 
+	checkDead() {
+		const dead = this.mainCharacter.health.atMin();
+		if (dead) this.transition('dead');
+		return dead;
+	}
+
 	gameTick(t) {
 		super.gameTick(t);
 
 		if (this.checkWin()) return { terrainChunks: [] };
+		this.checkDead();
 
 		if (this.tick % 300 === 0 && this.spawnDinos) {
 			this.addNewDino();
@@ -204,7 +236,7 @@ class DinoGame extends GenericGame {
 		const chunkRadius = Math.min(0 + Math.floor(this.tick / 50), 3);
 		const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 		// Update actors
-		actors.forEach((actor) => actor.update(t, this.world));
+		actors.forEach((actor) => actor.update(t, this.world, this));
 		actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
 		return { terrainChunks };
 	}
@@ -237,7 +269,10 @@ class DinoGame extends GenericGame {
 			cameraRotationGoalArray: [cameraVerticalRotation, 0, mainCharacter.facing - HALF_PI],
 			worldCoords: [-x, -y, -z],
 			entities: [...actors, ...items],
-			clearColor: [0.5, 0.75, 1],
+			// clearColor: [0.5, 0.75, 1],
+			clearColor: SKY_COLOR_PER_HOUR[this.getWorldHour()],
+			sunLightAngle: (this.getWorldHour() / 24) * TAU,
+			sunLightIntensity: 0.3,
 		};
 		const { inventory } = mainCharacter;
 		const scannerItemPercentages = this.calcScannableItemPercentages();
@@ -246,6 +281,9 @@ class DinoGame extends GenericGame {
 			item: iItem,
 			scannerItemPercentages,
 			inventory,
+			debug: {
+				lastDeltaT: this.lastDeltaT,
+			},
 		};
 		return {
 			sceneUpdateOptions,
@@ -253,32 +291,38 @@ class DinoGame extends GenericGame {
 		};
 	}
 
-	addNewDino() {
+	getRandomSpawnCoords() {
 		const [minRadius, maxRadius] = this.spawnRadii;
 		const r = minRadius + Random.randomInt(maxRadius - minRadius);
 		const angle = Random.randomAngle();
 		const [x, y] = ArrayCoords.polarToCartesian(r, angle);
-		const coords = ArrayCoords.add(this.mainCharacter.coords, [x, y, 0]);
+		return ArrayCoords.add(this.mainCharacter.coords, [x, y, 0]);
+	}
+
+	addNewDino() {
+		const coords = this.getRandomSpawnCoords();
 		const [distance] = this.findNearestActor(coords);
 		if (distance < this.spawnActorDistance) return null;
-		const randColor = () => (0.5 + (Random.random() * 0.5));
-		const model = Random.pick(DINO_MODEL_KEYS);
-		const dinoOpt = {
-			name: 'Dino',
-			autonomous: true,
-			isDinosaur: true,
-			wandering: true,
-			size: 60,
-			color: [randColor(), randColor(), randColor()],
-			turnSpeed: TAU / 3000,
-			mass: 10000,
-			// renderAs: 'sphere',
-			renderAs: 'model',
-			model,
-		};
+		// const randColor = () => (0.5 + (Random.random() * 0.5));
+		const dinoKey = Random.pick(Object.keys(dinos));
+		const dinoOpt = dinos[dinoKey];
+		// 	name: 'Dino',
+		// 	autonomous: true,
+		// 	isDinosaur: true,
+		// 	wandering: true,
+		// 	size: 60,
+		// 	heightSizeOffset: 0,
+		// 	color: [randColor(), randColor(), randColor()],
+		// 	turnSpeed: TAU / 3000,
+		// 	walkForce: 10000,
+		// 	mass: 10000,
+		// 	// renderAs: 'sphere',
+		// 	renderAs: 'model',
+		// 	model,
+		// };
 		const dino = this.addNewActor(dinoOpt);
 		dino.coords = coords;
-		console.log('Added dino', dino, model);
+		console.log('Added dino', dinoOpt);
 		return dino;
 	}
 
@@ -287,6 +331,15 @@ class DinoGame extends GenericGame {
 	}
 
 	addNewTree() {
+		const coords = this.getRandomSpawnCoords();
+		this.addNewItem({
+			isTree: true,
+			color: Random.pick(['#76c379', '#508d76']),
+			renderAs: 'model',
+			model: 'royalPalm',
+			coords,
+			rooted: true,
+		});
 		// TODO:
 		// Create random tree and find a location
 		// Add a despawnRadius
@@ -297,21 +350,24 @@ class DinoGame extends GenericGame {
 		ITEMS.forEach((itemData) => {
 			this.addNewItem(itemData);
 		});
+		this.addNewTrees(30);
 		this.items.forEach((item) => {
 			if (item.rooted) {
 				this.setHeightToTerrain(item, this.world);
 			}
 			if (item.isTimeMachine) this.timeMachine = item;
 		});
-		this.addNewTrees(30);
 	}
 
 	async setup() {
 		const { spirit } = this.addNewPlayer();
-		this.mainCharacter = this.addNewCharacter(spirit);
-		this.mainCharacter.inventorySize = PARTS.length;
-		this.mainCharacter.coords = [0, 0, 0];
-		this.mainCharacter.walkForce = 12000;
+		this.mainCharacter = this.addNewCharacter({
+			spirit,
+			inventorySize: PARTS.length,
+			coords: [0, 0, 0],
+			walkForce: 14000,
+			jumpForce: 14000 * 22,
+		});
 		this.buildWorld();
 		const { gameScene } = this;
 		await gameScene.setup([0, 100, 100]);
@@ -334,30 +390,28 @@ class DinoGame extends GenericGame {
 		this.pointerLocker.off('lockedMouseMove', this.mouseHandler);
 	}
 
+	toggleSoundBasedOnCheckboxes() {
+		const musicCheckbox = DinoInterface.$('#music-checkbox');
+		const soundCheckbox = DinoInterface.$('#sound-fx-checkbox');
+		this.sounds.turnMusicOn(musicCheckbox.checked);
+		this.sounds.turnSoundsOn(soundCheckbox.checked);
+	}
+
 	setupMainMenuEvents() {
 		this.startButtonHandler = () => {
 			this.transition('intro');
 		};
 		DinoInterface.$('#start-game-button').addEventListener('click', this.startButtonHandler);
 		const musicCheckbox = DinoInterface.$('#music-checkbox');
-		this.toggleMusicHandler = () => {
-			const { checked } = musicCheckbox;
-			this.sounds.turnMusicOn(checked);
-		};
-		musicCheckbox.addEventListener('change', this.toggleMusicHandler);
+		musicCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
 		const soundCheckbox = DinoInterface.$('#sound-fx-checkbox');
-		this.toggleSoundHandler = () => {
-			const { checked } = soundCheckbox;
-			this.sounds.turnSoundsOn(checked);
-			if (this.sounds.isSoundsOn) this.sounds.play('beep');
-		};
-		soundCheckbox.addEventListener('change', this.toggleSoundHandler);
+		soundCheckbox.addEventListener('change', this.toggleSoundBasedOnCheckboxes);
 	}
 
 	cleanUpMainMenuEvents() {
 		DinoInterface.$('#start-game-button').removeEventListener('click', this.startButtonHandler);
-		DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleMusicHandler);
-		DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundHandler);
+		DinoInterface.$('#music-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
+		DinoInterface.$('#sound-fx-checkbox').removeEventListener('change', this.toggleSoundBasedOnCheckboxes);
 	}
 
 	async start() {
@@ -371,9 +425,12 @@ class DinoGame extends GenericGame {
 		// gameScene.addBox();
 		// await gameScene.addTerrainByHeightMap('BritanniaHeightMap2.jpg');
 
+		// this.addNewDino();
+		// this.addNewDino();
+
 		// const testDino = this.addNewDino();
-		// testDino.autonomous = false;
-		// testDino.mobile = false;
+		// // testDino.autonomous = true;
+		// // testDino.mobile = false;
 		// testDino.coords = [200, 0, 40];
 		// // testDino.physics = false;
 		// testDino.setFacing(0);

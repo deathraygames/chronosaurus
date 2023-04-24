@@ -1,18 +1,25 @@
+/* eslint-disable class-methods-use-this */
+
 const SHOW_CLASS = 'ui-show';
 const HIDE_CLASS = 'ui-hide';
+
+function round(n = 0, m = 100) {
+	return Math.round(n * m) / m;
+}
 
 class DinoInterface {
 	constructor() {
 		this.log = [];
 		this.lastDisplayedLogLength = 0;
 		this.logShow = 3;
+		this.borderSelector = '#hud';
 	}
 
 	static $(selector) {
 		const elt = window.document.querySelector(selector);
 		if (!elt) console.warn('Could not find', selector);
 		return elt;
-	};
+	}
 
 	static setText(selector, text) {
 		const elt = DinoInterface.$(selector);
@@ -68,10 +75,26 @@ class DinoInterface {
 
 	hideHud() { DinoInterface.hide('#hud'); }
 
+	showDead() { DinoInterface.show('#dead'); }
+
+	hideDead() { DinoInterface.hide('#dead'); }
+
 	addToLog(messages) {
 		if (!messages || !messages.length) return;
 		if (messages instanceof Array) this.log = this.log.concat(messages);
 		else this.log.push(messages); // string hopefully
+	}
+
+	flashBorder(color = '#f00', duration = 1000) {
+		const elt = DinoInterface.$(this.borderSelector);
+		const keyFrames = [ // Keyframes
+			{ borderColor: color },
+			{ borderColor: 'transparent' },
+		];
+		const keyFrameSettings = { duration, direction: 'alternate', easing: 'linear' };
+		const effect = new KeyframeEffect(elt, keyFrames, keyFrameSettings);
+		const animation = new Animation(effect, document.timeline);
+		animation.play();
 	}
 
 	updateInteraction(item) {
@@ -87,10 +110,11 @@ class DinoInterface {
 		DinoInterface.setText('#interaction-action-name', actionText);
 	}
 
-	updateDebug(actor) {
+	updateDebug(debug, actor) {
 		const html = `
-			Vel: ${actor.vel.map((v) => Math.round(v * 100) / 100).join('<br>')}<br>
-			Pos: ${actor.coords.map((v) => Math.round(v * 100) / 100).join('<br>')}<br>
+			Last delta T: ${round(debug.lastDeltaT)}<br>
+			Vel: ${actor.vel.map((v) => round(v)).join('<br>')}<br>
+			Pos: ${actor.coords.map((v) => round(v)).join('<br>')}<br>
 			Grounded: ${actor.grounded}
 		`;
 		DinoInterface.setHtml('#debug', html);
@@ -98,7 +122,7 @@ class DinoInterface {
 
 	updateScanner(scannerItemPercentages = []) {
 		const numbers = scannerItemPercentages
-			.map((n) => Math.max(1, Math.round(10000 * n) / 100)) // No less than 1%, and round to .00
+			.map((n) => Math.max(1, round(100 * n))) // No less than 1%, and round to .00
 			.sort((a, b) => (a - b));
 		const listItems = numbers.map((n) => `<li class="scan-bar" style="height: ${n}%;"><span>${n}</span></li>`);
 		DinoInterface.setHtml('#scans', listItems.join(''));
@@ -117,12 +141,27 @@ class DinoInterface {
 		DinoInterface.setHtml('#inv-list', listItems.join(''));
 	}
 
+	updateStats(actor) { // actor is main character
+		const statBars = [
+			{ name: 'stamina', value: actor.stamina.get(), barClass: 'stat-bar-stamina' },
+			{ name: 'health', value: actor.health.get(), barClass: 'stat-bar-health' },
+		];
+		const listItems = statBars.map((bar) => `<li class="stat-bar ${bar.barClass}" style="height: ${bar.value}%;">
+			<span>${bar.name} ${bar.value}</span>
+		</li>`);
+		DinoInterface.setHtml('#stat-list', listItems.join(''));
+		if (actor.health.lastDelta < 0) {
+			this.flashBorder('#933f45');
+		}
+	}
+
 	render(interfaceUpdates = {}) {
-		const { item, actor, scannerItemPercentages, inventory } = interfaceUpdates;
+		const { item, actor, scannerItemPercentages, inventory, debug } = interfaceUpdates;
 		this.updateLog();
-		// this.updateDebug(actor);
+		// this.updateDebug(debug, actor);
 		this.updateInteraction(item);
 		this.updateScanner(scannerItemPercentages);
+		this.updateStats(actor);
 		this.updateLog();
 		this.updateInventory(inventory);
 	}

@@ -59,8 +59,8 @@ label[for]:hover {
 
 #debug {
 	position: absolute;
-	top: 0;
-	left: 0;
+	top: 40%;
+	left: 2vmin;
 }
 
 #interaction {
@@ -206,9 +206,9 @@ label[for]:hover {
 
 .clock {
 	--clock-size: 80vmin;
-	--clock-hour-color: white;
-	--clock-minute-color: white;
-	--clock-second-color: red;
+	--clock-hour-color: #f0e9c9;
+	--clock-minute-color: #f0e9c9;
+	--clock-second-color: #933f45;
 	--clock-hand-size: 2em;
 	position: absolute;
 	width: var(--clock-size);
@@ -216,7 +216,7 @@ label[for]:hover {
 	text-align: center;
 	left: calc(50% - (var(--clock-size) / 2));
 	top: calc(50% - (var(--clock-size) / 2));
-	border: solid 1em black;
+	border: solid 1em #653d48;
 	background: rgba(0, 0, 0, 0.5);
 	border-radius: 50%;
 	animation-iteration-count: 1;
@@ -315,7 +315,8 @@ label[for]:hover {
 	align-items: stretch;
 	align-content: stretch;
 	gap: 1vmin;
-	padding: 1vmin;
+	padding: 0.5vmin;
+	border: solid 1vmin transparent;
 	--hud-color: white;
 	color: var(--hud-color);
 	opacity: 0.9;
@@ -341,17 +342,19 @@ label[for]:hover {
 	border: dotted 1px rgba(255, 255, 255, 0.5);
 	border-left: 0;
 	border-right: 0;
+	float: right;
 }
-#scans > li {
+#scans li {
 	display: inline-block;
-	margin: 0 0.25em;
-	width: 0.4vmin;
+	margin: 0 0.4vw;
+	/* width: 0.4vmin; */
+	width: 3px;
 	background: var(--hud-color);
 }
-#scans > li > span {
+#scans li > span {
 	display: none;
 }
-#scans > li:hover > span {
+#scans li:hover > span {
 	display: block;
 }
 
@@ -403,6 +406,37 @@ label[for]:hover {
 #inv-list li.inv-empty {
 	border-color: transparent;
 	background: rgba(0, 0, 0, 0.1);
+}
+
+#stat-list {
+	display: flex;
+	list-style: none;
+	margin: 0;
+	height: 20vmin;
+	border-left: 0;
+	border-right: 0;
+}
+#stat-list li {
+	display: inline-block;
+	margin: 0 0.25em;
+	width: 1vmin;
+	background: var(--hud-color);
+	border: solid 1px var(--hud-color);
+}
+#stat-list li > span {
+	display: none;
+}
+#stat-list li:hover > span {
+	display: block;
+}
+#stat-list li.stat-bar-health {
+	background: #933f45;
+	border-color: #b25e46;
+	
+}
+#stat-list li.stat-bar-stamina {
+	background: #508d76;
+	border-color: #76c379;
 }
 
 /* ---------------------------------------------------- Main Menu ----- */
@@ -527,4 +561,16 @@ label[for]:hover {
 #intro.ui-hide {
 	transition: all 1s;
 	opacity: 0;
+}
+
+/* ---------------------------------------------------- Dead ----- */
+
+#dead {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	background: #653d48;
+	color: #d8b1a1;
+	font-size: 3vmin;
 }

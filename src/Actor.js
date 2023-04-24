@@ -1,4 +1,4 @@
-import { ArrayCoords, Random, TAU, Pool } from 'rocket-utility-belt';
+import { ArrayCoords, Random, TAU, PI, Pool } from 'rocket-utility-belt';
 import Entity from './Entity.js';
 
 const CLOSE_ENOUGH = 40; // 2m
@@ -12,29 +12,49 @@ class Actor extends Entity {
 		this.physics = true;
 		this.mass = 60; // kg
 		this.stamina = new Pool(50, 50);
+		this.staminaRegenPerSecond = 5;
+		this.staminaUsePerWalk = 0.2;
+		this.health = new Pool(50, 50);
+		this.healthRegenPerSecond = 2;
+		this.tiredMultiplier = 0.5;
 		this.emotions = [];
 		this.spiritId = options.spiritId;
 		this.isActor = true;
-		this.moveTarget = [0, 0, 0];
+		this.lookTargetEntity = null;
+		this.lookTargetDistance = Infinity;
+		this.currentPlan = { name: 'rest', moveTarget: null };
 		this.cooldowns = {
 			planning: 0,
+			looking: 0,
 			//
 		};
+		// this.lookDistance = 1000;
+		this.huntDistance = 0; // Goes aggro if hungry and has stamina
+		this.attentionDistance = 900; // Turns and looks
+		this.fleeDistance = 0; // run away
 		this.maxWanderRange = 1000;
-		this.turnSpeed = TAU / 1000; // one rotation in 1000 ms (1 second)
-		this.walkForce = this.walkForce || 800;
+		this.turnSpeed = TAU / 1000; // (radians/ms) one rotation in 1000 ms (1 second)
+		this.walkForce = 1200;
+		this.jumpForce = this.walkForce * 20;
+		this.setProperties(options);
 	}
 
 	jump() {
 		if (!this.grounded) return false;
-		this.applyForce([0, 0, 140000]);
+		let { jumpForce } = this;
+		if (this.stamina.atMin()) jumpForce *= this.tiredMultiplier;
+		this.applyForce([0, 0, jumpForce]);
 		return true;
 	}
 
 	walk(directionOffset = 0, multiplier = 1) {
+		let { walkForce } = this;
+		walkForce *= multiplier;
 		// it feels good to walk in the air (a little bit at least)
-		const m = ((this.grounded) ? 1 : 0.2) * multiplier;
-		this.applyMovementForce(this.walkForce * m, directionOffset);
+		if (!this.grounded) walkForce *= 0.2;
+		if (this.stamina.atMin()) walkForce *= this.tiredMultiplier;
+		this.applyMovementForce(walkForce, directionOffset);
+		this.stamina.subtract(this.staminaUsePerWalk);
 	}
 
 	heatUp(name, seconds) {
@@ -46,49 +66,112 @@ class Actor extends Entity {
 		if (this.cooldowns[name] < 0) this.cooldowns[name] = 0;
 	}
 
-	updateTimers(t) {
-		const seconds = t / 1000;
-		['planning'].forEach((cdName) => {
+	updateTimers(seconds = 0) {
+		Object.keys(this.cooldowns).forEach((cdName) => {
 			this.coolDown(cdName, seconds);
 		});
+	}
+
+	regenerate(seconds = 0) {
+		if (!this.movementForce) {
+			const stamHeal = this.staminaRegenPerSecond * seconds;
+			this.stamina.add(stamHeal);
+		}
+		const healthHeal = this.healthRegenPerSecond * seconds;
+		this.health.add(healthHeal);
 	}
 
 	updateEmotions() {
 
 	}
 
-	updateLook() {
+	updateLook(t, gameWorld) {
 		if (!this.autonomous) return 0;
+		// Look for a new target?
+		if (this.cooldowns.looking) return 0;
+		// Reset look - assume no target
+		this.lookTargetEntity = null;
+		this.lookTargetDistance = Infinity;
+		this.heatUp('looking', 1);
+		// Do the look in the game world
+		const filter = (actor) => (actor.faction !== this.faction && actor.entityId !== this.entityId);
+		const [dist, who] = gameWorld.findNearestActor(this.coords, filter);
+		if (!who) return 0;
+		if (dist < this.fleeDistance) {
+			console.log(this.name, 'wants to flee');
+			// TODO: run away
+			// this.heatUp('planning', 3);
+		} else if (dist < this.attentionDistance
+			|| dist < this.huntDistance
+		) {
+			this.lookTargetEntity = who;
+			// console.log(this.name, 'wants to look at', who.coords);
+		}
 	}
 
 	updatePlan() {
-		if (!this.autonomous) return 0;
-		if (this.cooldowns.planning) return 0;
+		if (!this.autonomous) return null;
+		if (this.cooldowns.planning) return null;
+		if (this.stamina.atMin()) {
+			// Just rest
+			this.heatUp('planning', 30);
+			return { name: 'rest', moveTarget: null };
+		}
+		// Plan based on distances
+		const { lookTargetDistance } = this;
+		if (lookTargetDistance < this.fleeDistance) {
+			const angleToThreat = ArrayCoords.getAngleFacing(this.coords, this.lookTargetEntity.coords);
+			const angleAway = (angleToThreat + PI) % TAU;
+			const moveTarget = ArrayCoords.polarToCartesian(this.fleeDistance, angleAway);
+			return { name: 'flee', moveTarget };
+		}
+		if (lookTargetDistance < this.huntDistance) {
+			this.heatUp('planning', 1); // re-plan soon so we can follow
+			this.moveTarget = [...this.lookTargetEntity.coords];
+			return { name: 'hunt', moveTarget: null };
+		}
+		if (lookTargetDistance < this.attentionDistance && Random.chance(0.5)) {
+			return { name: 'watch', moveTarget: null };
+		}
 		if (this.wandering) {
 			const deltaX = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 			const deltaY = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
-			this.moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
+			const moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
 			this.heatUp('planning', 30);
+			return { name: 'wander', moveTarget };
 			// console.log(this.name, 'planning a wander');
 		}
 	}
 
-	updateMovement(t) {
-		if (!this.mobile || !this.autonomous) return 0;
-		const distanceToTarget = ArrayCoords.getDistance(this.coords, this.moveTarget);
-		if (distanceToTarget < CLOSE_ENOUGH) return 0;
-		const maxTurnRadians = t * this.turnSpeed;
-		const remainderToTurn = this.turnToward(this.moveTarget, maxTurnRadians);
-		const speedFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
-		if (remainderToTurn < 0.2) this.walk(0, speedFraction);
+	updateMovement(t, moveTarget) {
+		if (!this.mobile || !this.autonomous) return;
+		if (!moveTarget) {
+			if (this.lookTargetEntity) {
+				this.turnToward(this.lookTargetEntity.coords, t * this.turnSpeed);
+			}
+			return;
+		}
+		const distanceToTarget = ArrayCoords.getDistance(this.coords, moveTarget);
+		if (distanceToTarget < CLOSE_ENOUGH) return;
+		// Do things slower if we're near the destination
+		const proximityFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
+		// Don't turn faster than your turn speed
+		const maxTurnRadians = t * this.turnSpeed * proximityFraction;
+		const remainderToTurn = this.turnToward(moveTarget, maxTurnRadians);
+		// Don't walk until we've turned
+		if (remainderToTurn < 0.2) this.walk(0, proximityFraction);
 	}
 
-	update(t, world) {
-		this.updateTimers(t);
+	update(t, world, game) {
+		const seconds = t / 1000;
+		this.health.clearLastDelta(); // TODO: move this somewhere else?
+		this.regenerate(seconds);
+		this.updateTimers(seconds);
 		this.updateEmotions(t);
-		this.updateLook(t);
-		this.updatePlan(t);
-		this.updateMovement(t);
+		this.updateLook(t, game);
+		const newPlan = this.updatePlan(t);
+		if (newPlan) this.currentPlan = newPlan;
+		this.updateMovement(t, this.currentPlan.moveTarget);
 		this.updatePhysics(t);
 	}
 }

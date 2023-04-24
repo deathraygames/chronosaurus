@@ -22,6 +22,7 @@ class DinoWorld {
 		// of the terrain has +1 vertex compared to the # of segments
 		this.terrainChunkVertexSize = this.terrainSegmentsPerChunk + 1;
 		this.terrainChunksCache = {};
+		this.terrainColor = '#76c379';
 	}
 
 	validateNumbers(objOfValues, ...args) {
@@ -164,7 +165,7 @@ class DinoWorld {
 		// document.getElementById('map').innerHTML = '';
 		// document.getElementById('map').appendChild(image);
 		return {
-			color: (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
+			color: this.terrainColor, // (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
 			textureImage: image,
 			image,
 			heights,

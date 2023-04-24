@@ -25,6 +25,10 @@ class Entity {
 		this.size = 2;
 		this.lookLength = 30;
 		this.remove = false;
+		this.setProperties(properties);
+	}
+
+	setProperties(properties = {}) {
 		Object.keys(properties).forEach((key) => {
 			this[key] = JSON.parse(JSON.stringify(properties[key]));
 		});

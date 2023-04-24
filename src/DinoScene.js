@@ -434,7 +434,7 @@ class DinoScene {
 			// sceneObj = model.object.clone();
 			sceneObj = this.modelMgr.makeNewObject(entity.model);
 			sceneObj.userData.modelName = entity.model;
-			this.modelMgr.playClip(sceneObj, 0);
+			// this.modelMgr.playClip(sceneObj, 0);
 			// console.log(sceneObj.userData);
 		}
 		// sceneObj.castShadow = true;

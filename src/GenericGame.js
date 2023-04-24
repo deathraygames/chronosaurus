@@ -11,6 +11,9 @@ const { PI } = Math;
 const TAU = PI * 2;
 const HALF_PI = PI / 2;
 const MAX_ACTORS = 5000;
+const SECONDS_PER_HOUR = 60 * 60;
+const SECONDS_PER_DAY = SECONDS_PER_HOUR * 24;
+const START_WORLD_TIME = 60 * 60 * 10; // 10 AM, in seconds
 
 class GenericGame extends StateCommander {
 	constructor(options = {}) {
@@ -26,8 +29,10 @@ class GenericGame extends StateCommander {
 			maxMouseWheel = 100,
 			sounds = {},
 			music = {},
+			startWorldTime, // optional
 		} = options;
 		super({ states });
+		this.lastDeltaT = 0; // just for debug/tracking purposes
 		this.minMouseWheel = minMouseWheel;
 		this.maxMouseWheel = maxMouseWheel;
 		this.loop = new Looper();
@@ -43,6 +48,8 @@ class GenericGame extends StateCommander {
 		this.actors = [];
 		this.items = [];
 		this.tick = 0;
+		this.worldTime = startWorldTime || START_WORLD_TIME; // In seconds
+		this.worldTimePerGameTime = 200;
 	}
 
 	render(renderData = {}, t = 5) {
@@ -55,10 +62,16 @@ class GenericGame extends StateCommander {
 		this.gameScene.update(sceneUpdateOptions, t).render();
 	}
 
-	gameTick() { // You should overwrite this method
+	gameTick(t) { // You should overwrite this method
 		this.tick += 1;
 		if (this.tick > 1000000) this.tick = 0;
+		const deltaTWorldTime = (t / 1000) * this.worldTimePerGameTime;
+		this.worldTime = (this.worldTime + deltaTWorldTime) % SECONDS_PER_DAY;
 		return {};
+	}
+
+	getWorldHour() {
+		return Math.floor(this.worldTime / SECONDS_PER_HOUR);
 	}
 
 	assembleRenderData(gameTickData = {}) { // You should overwrite this method
@@ -70,6 +83,7 @@ class GenericGame extends StateCommander {
 	animationTick(deltaT) {
 		// Clamp the value to 100 ms so that it doesn't go overboard if the
 		// animation doesn't run in a long time
+		this.lastDeltaT = deltaT; // just for debug/tracking purposes
 		const t = clamp(deltaT, 0, 100);
 		const gameTickData = this.gameTick(t);
 		const renderData = this.assembleRenderData(gameTickData);
@@ -99,16 +113,14 @@ class GenericGame extends StateCommander {
 		return { player, spirit };
 	}
 
-	makeCharacter(spiritId) {
-		const character = new this.ActorClass({
-			spiritId,
-		});
+	makeCharacter(charProperties) {
+		const character = new this.ActorClass(charProperties);
 		character.isCharacter = true;
 		return character;
 	}
 
-	addNewCharacter(...args) {
-		const character = this.makeCharacter(...args);
+	addNewCharacter(charProperties) {
+		const character = this.makeCharacter(charProperties);
 		this.actors.push(character);
 		return character;
 	}
@@ -142,7 +154,7 @@ class GenericGame extends StateCommander {
 
 	/** Returns an array of (0) the distance to the nearest thing, and (1) the thing */
 	static findNearest(arr, coords, filterFn) {
-		return arr.reduce((previousValue, thing) => {
+		const nearest = arr.reduce((previousValue, thing) => {
 			// if there's a filter function defined, then use it to
 			// skip considering certain things
 			if (filterFn && !filterFn(thing)) return previousValue;
@@ -150,14 +162,15 @@ class GenericGame extends StateCommander {
 			const distance = ArrayCoords.getDistance(thing.coords, coords);
 			return (distance < nearestSoFar) ? [distance, thing] : previousValue;
 		}, [Infinity, null]);
+		return nearest;
 	}
 
-	findNearestActor(coords) {
-		return GenericGame.findNearest(this.actors, coords);
+	findNearestActor(coords, filterFn) {
+		return GenericGame.findNearest(this.actors, coords, filterFn);
 	}
 
-	findNearestItem(coords) {
-		return GenericGame.findNearest(this.items, coords);
+	findNearestItem(coords, filterFn) {
+		return GenericGame.findNearest(this.items, coords, filterFn);
 	}
 
 	/** Find all items that are interactable (not necessary within range though) */
