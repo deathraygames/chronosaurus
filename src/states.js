@@ -83,13 +83,20 @@ const states = {
 	explore: {
 		keyboardMapping: {
 			w: 'move forward',
-			s: 'move back',
 			a: 'move left',
+			s: 'move back',
 			d: 'move right',
+			// These causes a problem due to a bug in kb commander
+			// W: 'move forward sprint',
+			// A: 'move left sprint',
+			// S: 'move back sprint',
+			// D: 'move right sprint',
 			z: 'turn left',
 			x: 'turn right',
 			e: 'interact nearest',
 			' ': 'jump',
+			Shift: 'sprint',
+			Backspace: 'stop',
 		},
 		async start(game) {
 			game.interface.showHud();

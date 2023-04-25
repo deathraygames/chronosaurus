@@ -48,7 +48,7 @@
 					<div id="interaction-details" class="ui-hide">
 						<div id="interaction-target"><!-- Item --></div>
 						<div id="interaction-action">
-							[E]
+							[E] <span id="interaction-tip"></span>
 							<!-- [E] Dig -->
 							<span id="interaction-action-name"></span>
 						</div>
@@ -59,6 +59,7 @@
 				<div>
 					<!-- Stats -->
 					<ul id="stat-list"></ul>
+					[Backspace] Stop, [WASD] Walk, [Shift] Sprint
 				</div>
 				<div id="inv">
 					<ul id="inv-list"></ul>
@@ -108,7 +109,7 @@
 
 			</div>
 			<div class="main-menu-content full-screen">
-				<header>
+				<header class="main-menu-header">
 					<h1 class="title"><span class="title-chrono">Chrono</span><span class="title-saur">saur</span>🦕</h1>
 				</header>
 				<div class="main-menu-row">
@@ -158,6 +159,7 @@
 							<input type="checkbox" checked="checked" id="sound-fx-checkbox" />
 							<label for="sound-fx-checkbox">Sound Effects</label>
 						</div>
+						<div class="version">v1.0.0</div>
 					</section>
 					<div id="main-menu-loading">
 						<div class="clock">

@@ -4,6 +4,11 @@ import noise from 'noise-esm';
 
 const { X, Y } = ArrayCoords;
 
+const LIGHT_GREEN = [118, 195, 121]; // Light green = #76c379
+const DARK_GREEN = [80, 141, 118]; // Dark green = #508d76
+const TAN = [204, 146, 94]; // Tan #cc925e
+const DARK_GRAY = [125, 110, 100]; // #7d6e6e
+
 class DinoWorld {
 	constructor() {
 		const todaysSeed = PseudoRandomizer.getPseudoRandInt(Number(new Date()), 1000);
@@ -116,6 +121,48 @@ class DinoWorld {
 		return { canvas, ctx };
 	}
 
+	makeTerrainTextureData(topLeft) {
+		const width = 256;
+		const height = 256;
+		const stepSize = this.chunkSize / 256;
+		const data = new Uint8Array(width * height * 4);
+		const setColor = (i, [r, g, b]) => {
+			data[i] = clamp(r, 0, 255);
+			data[i + 1] = clamp(g, 0, 255);
+			data[i + 2] = clamp(b, 0, 255);
+			data[i + 3] = 255;
+		};
+		for (let i = 0; i < data.length; i += 4) {
+			const x = Math.floor(i / 4) % width;
+			const y = Math.floor(i / 4 / width);
+			const [worldX, worldY] = this.convertToWorldXY(x, y, topLeft, stepSize);
+			// ^ This conversion is not working quite right - TODO: Fix this
+			// TODO: Remove * 2 below
+			// TODO: Add in some other noise randomness
+			const h = Math.round(this.calcTerrainHeight(worldX * 2, worldY * 2));
+			let color = LIGHT_GREEN;
+			if (h > 400) {
+				color = DARK_GRAY;
+			} else if (h > 300) {
+				color = (h % 2 === 0) ? DARK_GRAY : TAN;
+			} else if (h > 250) {
+				color = (h % 4 === 0) ? LIGHT_GREEN : TAN;
+			} else if (h > 150) {
+				color = (h % 2 === 0) ? LIGHT_GREEN : TAN;
+			} else if (h > 1) {
+				color = (h % 5 === 0) ? LIGHT_GREEN : DARK_GREEN;
+			}
+			setColor(i, color);
+		}
+		return data;
+	}
+
+	convertToWorldXY(stepX, stepY, topLeft, stepSize) {
+		const worldX = topLeft[X] + (stepX * stepSize);
+		const worldY = topLeft[Y] - (stepY * stepSize);
+		return [worldX, worldY];
+	}
+
 	makeTerrainChunk(chunkCoords) {
 		if (!chunkCoords) throw new Error('makeTerrainChunk missing chunkCoords');
 		const debug = [];
@@ -133,9 +180,10 @@ class DinoWorld {
 			if (!debug[y]) debug[y] = [];
 			for (x = 0; x < dataSize; x += 1) {
 				// Convert the x, y steps to actual world x, y
-				const convSize = this.terrainSegmentSize;
-				const worldX = topLeft[X] + (x * convSize);
-				const worldY = topLeft[Y] - (y * convSize);
+				// const convSize = this.terrainSegmentSize;
+				// const worldX = topLeft[X] + (x * convSize);
+				// const worldY = topLeft[Y] - (y * convSize);
+				const [worldX, worldY] = this.convertToWorldXY(x, y, topLeft, this.terrainSegmentSize);
 				this.validateNumbers({ worldX, worldY });
 				const h = this.calcTerrainHeight(worldX, worldY);
 				// if (y === 0) console.log('y = 0', x, h);
@@ -166,11 +214,15 @@ class DinoWorld {
 		// await waitForImage(image);
 		// console.log(image.complete);
 
+		const textureData = this.makeTerrainTextureData(topLeft);
+
 		// document.getElementById('map').innerHTML = '';
 		// document.getElementById('map').appendChild(image);
 		return {
 			color: this.terrainColor, // (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
-			textureImage: image,
+			// textureImage,
+			textureData,
+			heightMapImage: image,
 			image,
 			heights,
 			entityId: chunkId,

@@ -18,7 +18,7 @@ class ModelManager {
 
 	getModel(key) {
 		const model = this.models[key];
-		if (!model) throw new Error(`Could not find model ${key}`);
+		// if (!model) throw new Error(`Could not find model ${key}`);
 		return model;
 	}
 
@@ -106,9 +106,7 @@ class ModelManager {
 			} else if (model.format === 'fbx') {
 				model.fbx = value;
 				model.object = value;
-				// conso
-				// const anim = new FBXLoader();
-				// const mixer = new THREE.AnimationMixer(model.object);
+				model.animations = value.animations;
 			} else {
 				throw new Error(`Unsupported format ${model.format}`);
 			}
@@ -168,21 +166,26 @@ class ModelManager {
 		return this.models[modelKey].baseRotation;
 	}
 
-	playClip(obj, index = 0) {
+	playClip(obj, animationNameOrIndex = 0) {
 		const { modelKey } = obj.userData;
 		const model = this.getModel(modelKey);
+		if (!model) return null;
 		if (!model.animations) {
-			console.warn('No animations found for model', modelKey, obj.uuid);
-			return;
+			// console.warn('No animations found for model', modelKey, obj.uuid);
+			return null;
 		}
-		try {
-			const mixer = new AnimationMixer(obj);
-			const clip = model.animations[index];
-			const action = mixer.clipAction(clip);
-			action.play();
-		} catch (err) {
-			console.warn(err);
+		const mixer = new AnimationMixer(obj);
+		let index = 0;
+		if (typeof animationNameOrIndex === 'number') {
+			index = animationNameOrIndex;
+		} else if (typeof animationNameOrIndex === 'string') {
+			index = model.animationIndices[animationNameOrIndex] || 0;
 		}
+		const clip = model.animations[index];
+		if (!clip) return null;
+		const action = mixer.clipAction(clip);
+		action.play();
+		return mixer;
 	}
 }
 

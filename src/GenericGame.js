@@ -13,7 +13,7 @@ const HALF_PI = PI / 2;
 const MAX_ACTORS = 5000;
 const SECONDS_PER_HOUR = 60 * 60;
 const SECONDS_PER_DAY = SECONDS_PER_HOUR * 24;
-const START_WORLD_TIME = 60 * 60 * 10; // 10 AM, in seconds
+const START_WORLD_TIME = 60 * 60 * 8; // 7 AM, in seconds
 
 class GenericGame extends StateCommander {
 	constructor(options = {}) {

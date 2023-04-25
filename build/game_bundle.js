@@ -387,28 +387,41 @@
 	];
 	// Other constants
 	const KEY_EVENT = 'keydown'; // Note that keyPress acts different and doesn't trigger for some keys
+	const KEY_UP_EVENT = 'keyup';
 
 	class KeyboardCommander extends Observer {
 		constructor(keyCommandMapping = {}, options = {}) {
 			super();
+			const {
+				autoMount = true,
+				triggerOnRepeat = false,
+				document = window.document,
+			} = options;
+			// an id is useful for debugging - identifying unique instantiations
+			this.id = Math.round(Math.random() * 99999);
+			// Do we want an individual command to fire off if the key is held down
+			this.triggerOnRepeat = Boolean(triggerOnRepeat);
 			// this.state = options.state || 'default';
 			this.mapping = {};
 			this.setMapping(keyCommandMapping);
-			this.document = options.document || window?.document || null;
-			if (!this.document?.addEventListener) throw error('document with addEventListener is required');
+			this.document = document;
+			if (!this.document.addEventListener) throw new Error('document with addEventListener is required');
+			this.keysDown = {};
+			this.commandsDown = {};
 			this.keyPressListener = (event) => this.handleKeyPress(event);
+			this.keyUpListener = (event) => this.handleKeyUp(event);
 			// Set up event hooks, if provided
 			this.setupEventListeners(options);
 			// Advanced settings
 			this.nodeNamesDontTrigger = ['TEXTAREA', 'INPUT'];
 			this.nodeNamesAllowDefault = ['TEXTAREA', 'INPUT']; // redundant since they won't get triggered
 			// Start it up - default is to automatically mount
-			if (options.autoMount === undefined || options.autoMount) this.mount();
+			if (autoMount) this.mount();
 		}
 
 		setMapping(mappingParam = {}) {
 			if (typeof mappingParam !== 'object') throw new Error('Invalid type for mapping param');
-			this.mapping = {...mappingParam};
+			this.mapping = { ...mappingParam };
 			this.trigger(MAPPING_EVENT);
 			return this.mapping;
 		}
@@ -433,11 +446,13 @@
 
 		mount() {
 			this.document.addEventListener(KEY_EVENT, this.keyPressListener);
+			this.document.addEventListener(KEY_UP_EVENT, this.keyUpListener);
 			this.trigger(MOUNT_EVENT);
 		}
 
 		unmount() {
 			this.document.removeEventListener(KEY_EVENT, this.keyPressListener);
+			this.document.removeEventListener(KEY_UP_EVENT, this.keyUpListener);
 			this.trigger(UNMOUNT_EVENT);
 		}
 
@@ -450,7 +465,20 @@
 			if (!this.nodeNamesAllowDefault.includes(nodeName)) {
 				event.preventDefault();
 			}
-			this.triggerKey(key, details);
+			if (!repeat) {
+				const command = this.mapping[key];
+				this.keysDown[key] = true;
+				if (command) this.commandsDown[command] = true;
+			}
+			const trigger = (!repeat || this.triggerOnRepeat);
+			if (trigger) this.triggerKey(key, details);
+		}
+
+		handleKeyUp(event) {
+			const { key } = event;
+			const command = this.mapping[key];
+			this.keysDown[key] = false;
+			if (command) this.commandsDown[command] = false;
 		}
 
 		setupEventListeners(listenersObj = {}) {
@@ -469,7 +497,7 @@
 			this.trigger(MISSING_COMMAND_EVENT, key);
 		}
 
-		triggerKey(key, details = {}) {
+		triggerKey(key /* , details = {} */) {
 			const command = this.mapping[key];
 			// TODO: Look at details and handle them in the mapping
 			if (command) {
@@ -487,6 +515,22 @@
 			const uniqueCommands = new Set();
 			this.getKeysMapped().forEach((key) => uniqueCommands.add(this.mapping[key]));
 			return Array.from(uniqueCommands);
+		}
+
+		isKeyDown(key) {
+			return this.keysDown[key];
+		}
+
+		isCommandDown(command) {
+			return this.commandsDown[command];
+		}
+
+		getKeysDown() {
+			return Object.keys(this.keysDown).filter((key) => this.keysDown[key]);
+		}
+
+		getCommandsDown() {
+			return Object.keys(this.commandsDown).filter((key) => this.commandsDown[key]);
 		}
 	}
 
@@ -61365,7 +61409,7 @@
 
 		getModel(key) {
 			const model = this.models[key];
-			if (!model) throw new Error(`Could not find model ${key}`);
+			// if (!model) throw new Error(`Could not find model ${key}`);
 			return model;
 		}
 
@@ -61453,9 +61497,7 @@
 				} else if (model.format === 'fbx') {
 					model.fbx = value;
 					model.object = value;
-					// conso
-					// const anim = new FBXLoader();
-					// const mixer = new THREE.AnimationMixer(model.object);
+					model.animations = value.animations;
 				} else {
 					throw new Error(`Unsupported format ${model.format}`);
 				}
@@ -61515,21 +61557,26 @@
 			return this.models[modelKey].baseRotation;
 		}
 
-		playClip(obj, index = 0) {
+		playClip(obj, animationNameOrIndex = 0) {
 			const { modelKey } = obj.userData;
 			const model = this.getModel(modelKey);
+			if (!model) return null;
 			if (!model.animations) {
-				console.warn('No animations found for model', modelKey, obj.uuid);
-				return;
+				// console.warn('No animations found for model', modelKey, obj.uuid);
+				return null;
 			}
-			try {
-				const mixer = new AnimationMixer(obj);
-				const clip = model.animations[index];
-				const action = mixer.clipAction(clip);
-				action.play();
-			} catch (err) {
-				console.warn(err);
+			const mixer = new AnimationMixer(obj);
+			let index = 0;
+			if (typeof animationNameOrIndex === 'number') {
+				index = animationNameOrIndex;
+			} else if (typeof animationNameOrIndex === 'string') {
+				index = model.animationIndices[animationNameOrIndex] || 0;
 			}
+			const clip = model.animations[index];
+			if (!clip) return null;
+			const action = mixer.clipAction(clip);
+			action.play();
+			return mixer;
 		}
 	}
 
@@ -61651,7 +61698,7 @@
 			// pointLight.lookAt(new Vector3());
 			this.scene.add(pointLight);
 
-			const ambientLight = new AmbientLight(0x404040, 0.3);
+			const ambientLight = new AmbientLight(0x607070, 0.3);
 			this.scene.add(ambientLight);
 
 			// const sphereSize = 1;
@@ -61728,6 +61775,21 @@
 				? new Color(...colorParam) : new Color(colorParam);
 		}
 
+		animateObject(t, sceneObj, animationName) {
+			// TODO: Find a better home for this. not great to put this onto the object itself
+			if (typeof sceneObj.mixer === 'undefined') {
+				sceneObj.mixer = this.modelMgr.playClip(sceneObj, animationName);
+			} else if (sceneObj.mixer === null) ; else { // We have a mixer
+				if (animationName === sceneObj.lastAnimationName) {
+					sceneObj.mixer.update(t / 1000);
+					return;
+				}
+				// Animation names don't match, so start new mixer
+				sceneObj.mixer = this.modelMgr.playClip(sceneObj, animationName);
+				sceneObj.lastAnimationName = animationName;
+			}
+		}
+
 		update(options = {}, t = 5) { // time `t` is in milliseconds
 			// console.log(t);
 			const {
@@ -61797,6 +61859,8 @@
 						if (!sceneObj) console.warn('Could not add entity to scene', entity);
 					}
 					visibleEntityUuids.push(sceneObj.uuid);
+					// Do animation
+					this.animateObject(t, sceneObj, entity.animationName);
 				});
 				// Loop over all world objects and remove any not visible
 				this.removeNotVisible(this.entityGroup, visibleEntityUuids);
@@ -61805,9 +61869,7 @@
 				const visibleTerrainUuids = []; // "visible" as in "included in the update"
 				terrainChunks.forEach((chunk) => {
 					let sceneObj = this.entitySceneObjects[chunk.entityId];
-					if (sceneObj) {
-						this.applyTextureImageToObject(sceneObj, chunk.textureImage);
-					} else {
+					if (sceneObj) ; else {
 						console.log('Adding terrain for chunk', chunk.entityId);
 						sceneObj = this.addNewTerrainChunkPlane(chunk);
 					}
@@ -61858,17 +61920,7 @@
 				console.warn('Cannot apply texture because image is not complete yet');
 			}
 			// FIXME: short-cutting this because it's not working
-			/*
-			const texture = new THREE.Texture(textureImage);
-			texture.type = THREE.RGBAFormat;
-			// console.log(texture, textureImage);
-			// new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping,
-				THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter,
-				THREE.RGBAFormat, THREE.UnsignedByteType, 0);
-			const { material } = obj;
-			material.map = texture;
-			material.needsUpdate = true;
-			*/
+			return;
 		}
 
 		applyHeightsToGeometry(geometry, heights /* , dataSize */) {
@@ -61906,7 +61958,11 @@
 
 		makeTerrainChunkPlane(terrainChunk = {}) {
 			// const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
-			const { heights, segments, size, vertexDataSize, center,
+			const {
+				heights, segments, size, vertexDataSize, center,
+				textureData,
+				textureWidth = 256,
+				textureHeight = 256,
 				color = 0x55ffbb,
 			} = terrainChunk;
 			// const segments = 8;
@@ -61935,11 +61991,17 @@
 			// heightMap.wrapS = THREE.RepeatWrapping;
 			// heightMap.wrapT = THREE.RepeatWrapping;
 
-			// const material = new THREE.MeshStandardMaterial({
-			const material = new MeshPhongMaterial({
+			const texture = new DataTexture(
+				textureData, textureWidth, textureHeight, RGBAFormat,
+			);
+			texture.needsUpdate = true;
+
+			// const material = new THREE.MeshBasicMaterial({
+			const material = new MeshStandardMaterial({
+			// const material = new THREE.MeshPhongMaterial({ // better performance
 				// opacity: 0.9,
 				color,
-				// map: texture,
+				map: texture, // texture
 				// vertexColors: true,
 				// wireframe: true,
 				side: DoubleSide,
@@ -65511,7 +65573,7 @@
 			this.vel = [0, 0, 0];
 			this.acc = [0, 0, 0];
 			// Good to stop velocity from skyrocketing
-			this.maxVelocity = 400;
+			this.maxVelocity = 600;
 			this.movementForce = 0; // track movement force just to know when entity is moving on its own
 			this.tags = [];
 			this.renderAs = 'box';
@@ -65553,6 +65615,7 @@
 
 		setGrounded(grounded, h) {
 			this.grounded = grounded;
+			// if (this.isCharacter) console.log(grounded, h);
 			if (typeof h === 'number' && grounded) this.setZ(h);
 		}
 
@@ -65663,30 +65726,40 @@
 			// if (this.isCharacter) console.log(JSON.stringify(this.acc));
 		}
 
-		applyMovementForce(force = 0, direction = 0) {
+		applyImpulse(t, directedForcePerSecond = [0, 0, 0]) {
+			const seconds = t / 1000;
+			const impulseForce = ArrayCoords.multiply(directedForcePerSecond, seconds);
+			this.applyForce(impulseForce);
+			this.movementForce = true;
+		}
+
+		// For walking on the x, y plane
+		applyPlanarImpulse(t, force = 0, direction = 0) {
 			const angleOfForce = (this.facing + direction); // not sure why we need to negate this
 			const directedForce = [
 				force * Math.cos(angleOfForce),
 				force * Math.sin(angleOfForce),
 				0,
 			];
-			this.applyForce(directedForce);
-			this.movementForce = force;
+			this.applyImpulse(t, directedForce);
 		}
 
 		updatePhysics(t, options = {}) {
 			if (!this.physics) return null;
 			const seconds = t / 1000;
 			const {
-				gravity = [0, 0, -6],
-				groundFriction = 0.94,
+				gravity = [0, 0, -80],
+				// Lower friction --> slows down velocity more
+				groundFriction = 0.92,
 				airFriction = 0.9999,
 				accelerationDecay = 0.9,
 			} = options;
+			// Acceleration due to gravity
+			if (!this.grounded) this.acc = ArrayCoords.add(this.acc, gravity);
 			// Velocity
 			const deltaVel = ArrayCoords.multiply(this.acc, seconds);
 			this.vel = ArrayCoords.add(this.vel, deltaVel);
-			if (!this.grounded) this.vel = ArrayCoords.add(this.vel, gravity);
+			// if (!this.grounded) this.vel = ArrayCoords.add(this.vel, gravity);
 			this.vel = ArrayCoords.clampEachCoord(this.vel, -this.maxVelocity, this.maxVelocity);
 			const deltaPos = ArrayCoords.multiply(this.vel, seconds);
 			this.coords = ArrayCoords.add(this.coords, deltaPos);
@@ -65695,7 +65768,7 @@
 			/// ...but let's try to make it last a little longer?
 			this.acc = ArrayCoords.multiply(this.acc, accelerationDecay);
 			// Friction
-			let friction = (this.grounded) ? groundFriction : airFriction;
+			let friction = groundFriction; // (this.grounded) ? groundFriction : airFriction;
 			if (this.movementForce) friction = airFriction; // no friction if moving/walking
 			this.vel = ArrayCoords.multiply(this.vel, friction);
 			this.vel = [
@@ -65841,7 +65914,7 @@
 	const MAX_ACTORS = 5000;
 	const SECONDS_PER_HOUR = 60 * 60;
 	const SECONDS_PER_DAY = SECONDS_PER_HOUR * 24;
-	const START_WORLD_TIME = 60 * 60 * 10; // 10 AM, in seconds
+	const START_WORLD_TIME = 60 * 60 * 8; // 7 AM, in seconds
 
 	class GenericGame extends StateCommander {
 		constructor(options = {}) {
@@ -66400,6 +66473,11 @@
 
 	const { X, Y } = ArrayCoords;
 
+	const LIGHT_GREEN = [118, 195, 121]; // Light green = #76c379
+	const DARK_GREEN = [80, 141, 118]; // Dark green = #508d76
+	const TAN = [204, 146, 94]; // Tan #cc925e
+	const DARK_GRAY = [125, 110, 100]; // #7d6e6e
+
 	class DinoWorld {
 		constructor() {
 			const todaysSeed = PseudoRandomizer.getPseudoRandInt(Number(new Date()), 1000);
@@ -66512,6 +66590,48 @@
 			return { canvas, ctx };
 		}
 
+		makeTerrainTextureData(topLeft) {
+			const width = 256;
+			const height = 256;
+			const stepSize = this.chunkSize / 256;
+			const data = new Uint8Array(width * height * 4);
+			const setColor = (i, [r, g, b]) => {
+				data[i] = clamp$2(r, 0, 255);
+				data[i + 1] = clamp$2(g, 0, 255);
+				data[i + 2] = clamp$2(b, 0, 255);
+				data[i + 3] = 255;
+			};
+			for (let i = 0; i < data.length; i += 4) {
+				const x = Math.floor(i / 4) % width;
+				const y = Math.floor(i / 4 / width);
+				const [worldX, worldY] = this.convertToWorldXY(x, y, topLeft, stepSize);
+				// ^ This conversion is not working quite right - TODO: Fix this
+				// TODO: Remove * 2 below
+				// TODO: Add in some other noise randomness
+				const h = Math.round(this.calcTerrainHeight(worldX * 2, worldY * 2));
+				let color = LIGHT_GREEN;
+				if (h > 400) {
+					color = DARK_GRAY;
+				} else if (h > 300) {
+					color = (h % 2 === 0) ? DARK_GRAY : TAN;
+				} else if (h > 250) {
+					color = (h % 4 === 0) ? LIGHT_GREEN : TAN;
+				} else if (h > 150) {
+					color = (h % 2 === 0) ? LIGHT_GREEN : TAN;
+				} else if (h > 1) {
+					color = (h % 5 === 0) ? LIGHT_GREEN : DARK_GREEN;
+				}
+				setColor(i, color);
+			}
+			return data;
+		}
+
+		convertToWorldXY(stepX, stepY, topLeft, stepSize) {
+			const worldX = topLeft[X] + (stepX * stepSize);
+			const worldY = topLeft[Y] - (stepY * stepSize);
+			return [worldX, worldY];
+		}
+
 		makeTerrainChunk(chunkCoords) {
 			if (!chunkCoords) throw new Error('makeTerrainChunk missing chunkCoords');
 			const debug = [];
@@ -66529,9 +66649,10 @@
 				if (!debug[y]) debug[y] = [];
 				for (x = 0; x < dataSize; x += 1) {
 					// Convert the x, y steps to actual world x, y
-					const convSize = this.terrainSegmentSize;
-					const worldX = topLeft[X] + (x * convSize);
-					const worldY = topLeft[Y] - (y * convSize);
+					// const convSize = this.terrainSegmentSize;
+					// const worldX = topLeft[X] + (x * convSize);
+					// const worldY = topLeft[Y] - (y * convSize);
+					const [worldX, worldY] = this.convertToWorldXY(x, y, topLeft, this.terrainSegmentSize);
 					this.validateNumbers({ worldX, worldY });
 					const h = this.calcTerrainHeight(worldX, worldY);
 					// if (y === 0) console.log('y = 0', x, h);
@@ -66562,11 +66683,15 @@
 			// await waitForImage(image);
 			// console.log(image.complete);
 
+			const textureData = this.makeTerrainTextureData(topLeft);
+
 			// document.getElementById('map').innerHTML = '';
 			// document.getElementById('map').appendChild(image);
 			return {
 				color: this.terrainColor, // (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
-				textureImage: image,
+				// textureImage,
+				textureData,
+				heightMapImage: image,
 				image,
 				heights,
 				entityId: chunkId,
@@ -66616,13 +66741,14 @@
 			this.alive = true;
 			this.mobile = true;
 			this.physics = true;
-			this.mass = 60; // kg
+			this.mass = options.mass || 60; // kg
 			this.stamina = new Pool(50, 50);
 			this.staminaRegenPerSecond = 5;
-			this.staminaUsePerWalk = 0.2;
+			this.staminaUsePerWalk = 1.4; // per second
 			this.health = new Pool(50, 50);
 			this.healthRegenPerSecond = 2;
-			this.tiredMultiplier = 0.5;
+			this.tiredMultiplier = 0.3;
+			this.sprintMultiplier = 2;
 			this.emotions = [];
 			this.spiritId = options.spiritId;
 			this.isActor = true;
@@ -66640,27 +66766,34 @@
 			this.fleeDistance = 0; // run away
 			this.maxWanderRange = 1000;
 			this.turnSpeed = TAU$1 / 1000; // (radians/ms) one rotation in 1000 ms (1 second)
-			this.walkForce = 1200;
-			this.jumpForce = this.walkForce * 20;
+			this.walkForce = 1000 * this.mass;
+			this.jumpForce = this.walkForce * 100;
 			this.setProperties(options);
+			this.animationName = 'idle';
 		}
 
-		jump() {
+		jump(t) {
 			if (!this.grounded) return false;
 			let { jumpForce } = this;
 			if (this.stamina.atMin()) jumpForce *= this.tiredMultiplier;
-			this.applyForce([0, 0, jumpForce]);
+			this.applyImpulse(t, [0, 0, jumpForce]);
 			return true;
 		}
 
-		walk(directionOffset = 0, multiplier = 1) {
+		walk(t, directionOffset = 0, multiplier = 1) {
 			let { walkForce } = this;
-			walkForce *= multiplier;
+			walkForce *= multiplier; // a scalar force
+			const seconds = t / 1000;
 			// it feels good to walk in the air (a little bit at least)
 			if (!this.grounded) walkForce *= 0.2;
 			if (this.stamina.atMin()) walkForce *= this.tiredMultiplier;
-			this.applyMovementForce(walkForce, directionOffset);
-			this.stamina.subtract(this.staminaUsePerWalk);
+			this.applyPlanarImpulse(t, walkForce, directionOffset);
+			this.stamina.subtract(this.staminaUsePerWalk * multiplier * seconds);
+			this.animationName = 'walk';
+		}
+
+		sprint(t, direction = 0) {
+			this.walk(t, direction, this.sprintMultiplier);
 		}
 
 		heatUp(name, seconds) {
@@ -66722,6 +66855,7 @@
 			if (this.stamina.atMin()) {
 				// Just rest
 				this.heatUp('planning', 30);
+				this.animationName = 'idle';
 				return { name: 'rest', moveTarget: null };
 			}
 			// Plan based on distances
@@ -66748,6 +66882,7 @@
 				return { name: 'wander', moveTarget };
 				// console.log(this.name, 'planning a wander');
 			}
+			this.animationName = 'idle';
 			return { name: 'rest', moveTarget: null };
 		}
 
@@ -66767,7 +66902,7 @@
 			const maxTurnRadians = t * this.turnSpeed * proximityFraction;
 			const remainderToTurn = this.turnToward(moveTarget, maxTurnRadians);
 			// Don't walk until we've turned
-			if (remainderToTurn < 0.2) this.walk(0, proximityFraction);
+			if (remainderToTurn < 0.2) this.walk(t, 0, proximityFraction);
 		}
 
 		update(t, world, game) {
@@ -66982,6 +67117,7 @@
 			const percent = item.getInteractionPercent();
 			if (percent < 1) actionText += ` ${Math.floor(percent * 100)}%`;
 			DinoInterface.setText('#interaction-action-name', actionText);
+			DinoInterface.setText('#interaction-tip', (item.interactionEffort) ? 'Hold' : '');
 		}
 
 		updateDebug(debug, actor) {
@@ -67134,36 +67270,132 @@
 			path: 'dinos/FBX/Apatosaurus.fbx',
 			scale: 0.1,
 			color: '#535c89', // [0.5, 0.5, 0.7],
+			animationIndices: {
+				walk: 0,
+				attack: 1,
+				idle: 2, // Nothing?: 2
+				jump: 3,
+				run: 4,
+				die: 5,
+
+				zero: 0,
+				one: 1,
+				two: 2,
+				three: 3,
+				four: 4,
+				five: 5,
+				six: 6,
+			},
 		},
 		para: {
 			...defaultModel,
 			path: 'dinos/FBX/Parasaurolophus.fbx',
 			scale: 0.1,
 			color: '#7b99c8', // [0.3, 0.6, 0.6],
+			animationIndices: {
+				walk: 0,
+				attack: 1,
+				run: 2, // or walk?
+				jump: 3,
+				die: 4,
+				idle: 5,
+
+				zero: 0,
+				one: 1,
+				two: 2,
+				three: 3,
+				four: 4,
+				five: 5,
+				six: 6,
+			},
 		},
 		steg: {
 			...defaultModel,
 			path: 'dinos/FBX/Stegosaurus.fbx',
 			scale: 0.1,
 			color: '#dacb80', // [0.6, 0.6, 0.3],
+			animationIndices: {
+				idle: 0,
+				run: 1,
+				jump: 2,
+				walk: 3,
+				die: 4,
+				attack: 5,
+
+				zero: 0,
+				one: 1,
+				two: 2,
+				three: 3,
+				four: 4,
+				five: 5,
+				six: 6,
+			},
 		},
 		trex: {
 			...defaultModel,
 			path: 'dinos/FBX/Trex.fbx',
 			scale: 0.1,
 			color: '#933f45', // [0.65, 0.2, 0.1],
+			animationIndices: {
+				jump: 0,
+				attack: 1,
+				idle: 2,
+				walk: 3,
+				run: 4, // not entirely sure about walk vs run
+				die: 5,
+
+				zero: 0,
+				one: 1,
+				two: 2,
+				three: 3,
+				four: 4,
+				five: 5,
+				six: 6,
+			},
 		},
 		tric: {
 			...defaultModel,
 			path: 'dinos/FBX/Triceratops.fbx',
 			scale: 0.1,
 			color: '#be7979', // [0.5, 0.7, 0.2],
+			animationIndices: {
+				die: 0,
+				run: 1,
+				walk: 2,
+				idle: 3,
+				jump: 4,
+				attack: 5,
+
+				zero: 0,
+				one: 1,
+				two: 2,
+				three: 3,
+				four: 4,
+				five: 5,
+				six: 6,
+			},
 		},
 		velo: {
 			...defaultModel,
 			path: 'dinos/FBX/Velociraptor.fbx',
 			scale: 0.1,
 			color: '#b25e46', // [0.7, 0.5, 0.2],
+			animationIndices: {
+				jump: 0,
+				idle: 1,
+				run: 2,
+				walk: 3,
+				attack: 4,
+				die: 5,
+
+				zero: 0,
+				one: 1,
+				two: 2,
+				three: 3,
+				four: 4,
+				five: 5,
+				six: 6,
+			},
 		},
 	};
 
@@ -67252,13 +67484,20 @@
 		explore: {
 			keyboardMapping: {
 				w: 'move forward',
-				s: 'move back',
 				a: 'move left',
+				s: 'move back',
 				d: 'move right',
+				// These causes a problem due to a bug in kb commander
+				// W: 'move forward sprint',
+				// A: 'move left sprint',
+				// S: 'move back sprint',
+				// D: 'move right sprint',
 				z: 'turn left',
 				x: 'turn right',
 				e: 'interact nearest',
 				' ': 'jump',
+				Shift: 'sprint',
+				Backspace: 'stop',
 			},
 			async start(game) {
 				game.interface.showHud();
@@ -67308,6 +67547,8 @@
 		},
 	};
 
+	const defaultMass = 10000;
+
 	const defaultDino = {
 		name: 'Dino',
 		autonomous: true,
@@ -67316,12 +67557,13 @@
 		size: 60,
 		heightSizeOffset: 0,
 		// color: [randColor(), randColor(), randColor()],
-		walkForce: 10000,
-		mass: 10000,
+		walkForce: 900 * defaultMass,
+		mass: defaultMass,
 		attentionDistance: 1000,
 		fleeDistance: 0,
 		huntDistance: 0,
 		renderAs: 'model', // renderAs: 'sphere',
+		turnSpeed: TAU$1 / 3000,
 	};
 	const dinos = {
 		apat: {
@@ -67329,29 +67571,29 @@
 			model: 'apat',
 			faction: 'herbivore',
 			name: 'Dino apat',
-			mass: 20000,
-			turnSpeed: TAU$1 / 3000,
+			mass: defaultMass * 2.5,
+			turnSpeed: TAU$1 / 5000,
 		},
 		para: {
 			...defaultDino,
 			model: 'para',
 			faction: 'herbivore',
 			name: 'Dino para',
-			mass: 6000,
+			mass: defaultMass * 0.6,
 		},
 		steg: {
 			...defaultDino,
 			model: 'steg',
 			faction: 'herbivore',
 			name: 'Dino steg',
-			mass: 10000,
+			mass: defaultMass,
 		},
 		trex: {
 			...defaultDino,
 			model: 'trex',
 			faction: 'trex',
 			name: 'Dino trex',
-			mass: 12000,
+			mass: defaultMass * 1.5,
 			huntDistance: 500,
 		},
 		tric: {
@@ -67359,14 +67601,14 @@
 			model: 'tric',
 			faction: 'tric',
 			name: 'Dino tric',
-			mass: 10000,
+			mass: defaultMass * 1.3,
 		},
 		velo: {
 			...defaultDino,
 			model: 'velo',
 			faction: 'velo',
 			name: 'Dino velo',
-			mass: 5000,
+			mass: defaultMass * 0.5,
 			huntDistance: 500,
 		},
 	};
@@ -67617,9 +67859,9 @@
 		rooted: true,
 		scannable: true,
 		timeTravelPart: true,
-		interactionRange: PART_SIZE + 30,
+		interactionRange: PART_SIZE + 40,
 		interactionAction: 'Dig',
-		interactionEffort: 6,
+		interactionEffort: 100,
 		heightSizeOffset: 0,
 		inventoryDescription: 'This should be useful for rebuilding your time machine.',
 		interactionResult: {
@@ -67685,6 +67927,8 @@
 		},
 	];
 
+	const DEFAULT_TIME = 5; // ms
+
 	// const { X, Y, Z } = ArrayCoords;
 	const { Z } = ArrayCoords;
 
@@ -67723,6 +67967,13 @@
 		DARK_PURPLE, // 24
 	];
 
+	const WALK_ANGLES = {
+		forward: 0,
+		back: PI$1, // Or -PI
+		left: HALF_PI$1,
+		right: -HALF_PI$1,
+	};
+
 	window.Speaker = Speaker;
 
 	class DinoGame extends GenericGame {
@@ -67753,10 +68004,10 @@
 			// Max spawn distance should be somwhat similar to half the size of all the chunks being shown
 			this.spawnRadii = [this.spawnActorDistance, 3500];
 			this.despawnRadius = this.spawnRadii[1] * 1.5;
-			this.spawnDinos = true;
 			this.timeMachine = null;
 			this.headBop = 0.5;
 			// this.testMode = true;
+			this.spawnDinos = true;
 		}
 
 		say(text) {
@@ -67764,47 +68015,77 @@
 			this.speaker.speak(text);
 		}
 
+		walkCharacter(t, angles = [], sprint = false) {
+			if (!angles.length) return;
+			const angleSum = angles.reduce((sum, a) => sum + a, 0) / angles.length;
+			const method = (sprint ? 'sprint' : 'walk');
+			this.mainCharacter[method](t, angleSum);
+			if (this.mainCharacter.grounded) {
+				// this.sounds.play('footsteps', { random: 0.1 });
+				if (this.tick % 100 === 0) this.sounds.play('footsteps');
+				if (this.headBop) ;
+			}
+		}
+
+		interactNearest(t) {
+			const [, iItem] = this.findNearestInRangeInteractableItem(this.mainCharacter.coords);
+			if (!iItem) return;
+			if (this.tick % 100 === 0) this.sounds.play('collect');
+			const amount = t / 40;
+			const messages = this.ItemClass.interact(iItem, this.mainCharacter, amount);
+			if (messages) this.interface.addToLog(messages);
+			this.setHeightToTerrain(iItem, this.world);
+		}
+
+		handleCommandsDown(commands = [], t = DEFAULT_TIME) {
+			const splitCommands = commands.map((command) => command.split(' '));
+			// const firstCommands = commands.map((commandWords) => commandWords[0]);
+			const moves = splitCommands.filter((commandWords) => commandWords[0] === 'move');
+			let sprint = (commands.includes('sprint'));
+			const moveAngles = moves.map((moveCommandWords) => {
+				if (moveCommandWords[2] === 'sprint') sprint = true;
+				return WALK_ANGLES[moveCommandWords[1]];
+			});
+			if (this.kbCommander.isKeyDown('W')) moveAngles.push(WALK_ANGLES.forward);
+			if (this.kbCommander.isKeyDown('A')) moveAngles.push(WALK_ANGLES.left);
+			if (this.kbCommander.isKeyDown('S')) moveAngles.push(WALK_ANGLES.back);
+			if (this.kbCommander.isKeyDown('D')) moveAngles.push(WALK_ANGLES.right);
+			// if (sprint) console.log('sprint');
+			if (moveAngles.length) this.walkCharacter(t, moveAngles, sprint);
+			if (commands.includes('jump')) {
+				this.mainCharacter.jump(t);
+			}
+			if (commands.includes('interact nearest')) {
+				this.interactNearest(t);
+			}
+		}
+
 		handleCommand(command) {
 			const { mainCharacter } = this;
 			const commandWords = command.split(' ');
 			const firstCommand = commandWords[0];
-			if (firstCommand === 'move') {
-				// const spd = 10;
-				// Figure out the relative angle
-				let angleOfMovement = 0;
-				if (commandWords[1] === 'forward') angleOfMovement = 0;
-				else if (commandWords[1] === 'back') angleOfMovement += PI$1;
-				else if (commandWords[1] === 'left') angleOfMovement += HALF_PI$1;
-				else if (commandWords[1] === 'right') angleOfMovement -= HALF_PI$1;
-				mainCharacter.walk(angleOfMovement);
-				// const x = spd * Math.sin(angleOfMovement);
-				// const y = spd * Math.cos(angleOfMovement);
-				// mainCharacter.move([x, y, 0]);
-				// this.cameraCoords.position
-				if (this.mainCharacter.grounded) {
-					// this.sounds.play('footsteps', { random: 0.1 });
-					if (this.tick % 100 === 0) this.sounds.play('footsteps');
-					if (this.headBop) {
-						// TODO: this could be improved, and moved into the Actor class
-						this.mainCharacter.heightSizeOffset = this.headBop * Math.sin(this.tick / 10);
-					}
-				}
-			} else if (firstCommand === 'turn') {
+			if (firstCommand === 'move') ; else if (firstCommand === 'turn') {
 				let turnAmount = TAU$1 / 50;
-				if (commandWords[1] === 'left') turnAmount *= -1;
+				if (commandWords[1] === 'right') turnAmount *= -1;
 				mainCharacter.turn(turnAmount);
 			} else if (firstCommand === 'interact') {
 				if (commandWords[1] === 'nearest') {
-					const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
-					if (!iItem) return;
 					this.sounds.play('collect');
-					const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
-					if (messages) this.interface.addToLog(messages);
-					this.setHeightToTerrain(iItem, this.world);
+					// const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
+					// if (!iItem) return;
+					// this.sounds.play('collect');
+					// const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
+					// if (messages) this.interface.addToLog(messages);
+					// this.setHeightToTerrain(iItem, this.world);
 				}
 			} else if (firstCommand === 'jump') {
-				const didJump = mainCharacter.jump();
-				if (didJump) this.sounds.play('jump');
+				// const didJump = mainCharacter.jump();
+				if (mainCharacter.grounded) this.sounds.play('jump');
+			} else if (firstCommand === 'stop') {
+				this.mainCharacter.vel = [0, 0, 0];
+				// This is a hack to stop a key-stuck bug
+				this.kbCommander.keysDown = {};
+				this.kbCommander.commandsDown = {};
 			}
 		}
 
@@ -67812,7 +68093,8 @@
 			const [x, y, z] = entity.coords;
 			let h = world.getTerrainHeight(x, y);
 			h += (entity.heightSizeOffset * entity.size);
-			const grounded = (z <= h);
+			const grounded = (z <= h + 1);
+			// have a small offset of h (+1) so things aren't in the air going from one tiny bump downwards
 			if (grounded && !entity.grounded && entity.isCharacter) this.sounds.play('footsteps');
 			// TODO: play 'land' sound instead if velocity downward is high
 			entity.setGrounded(grounded, h);
@@ -67848,9 +68130,12 @@
 			this.cameraPosition[Z] = 35 + (zoom ** 2);
 			// this.cameraPosition[Y] = -100 - zoom;
 
+			// Handle commands being held down
+			this.handleCommandsDown(this.kbCommander.getCommandsDown(), t);
+
 			// Generate terrain
 			const { mainCharacter, actors } = this;
-			const chunkRadius = Math.min(0 + Math.floor(this.tick / 50), 3);
+			const chunkRadius = Math.min(0 + Math.floor(this.tick / 70), 3);
 			const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 			// Update actors
 			actors.forEach((actor) => actor.update(t, this.world, this));
@@ -67905,17 +68190,6 @@
 			const worldTimeArray = [
 				this.getWorldHour(), this.getWorldMinutes(),
 			];
-
-			// if (this.tick % 200 === 0) {
-			// 	console.log(
-			// 		worldTimeArray,
-			// 		// 'hr', this.getWorldHour(),
-			// 		// 'min', this.getWorldMinutes(),
-			// 		'sec', this.worldTime,
-			// 		'sunLightAngle', this.gameScene.sunLightAngle,
-			// 		'intensity', this.gameScene.getSunLightIntensity(),
-			// 	);
-			// }
 			const interfaceUpdates = {
 				actor: mainCharacter,
 				item: iItem,
@@ -67947,23 +68221,9 @@
 			// const randColor = () => (0.5 + (Random.random() * 0.5));
 			const dinoKey = Random.pick(Object.keys(dinos));
 			const dinoOpt = dinos[dinoKey];
-			// 	name: 'Dino',
-			// 	autonomous: true,
-			// 	isDinosaur: true,
-			// 	wandering: true,
-			// 	size: 60,
-			// 	heightSizeOffset: 0,
-			// 	color: [randColor(), randColor(), randColor()],
-			// 	turnSpeed: TAU / 3000,
-			// 	walkForce: 10000,
-			// 	mass: 10000,
-			// 	// renderAs: 'sphere',
-			// 	renderAs: 'model',
-			// 	model,
-			// };
 			const dino = this.addNewActor(dinoOpt);
 			dino.coords = coords;
-			console.log('Added dino', dinoOpt);
+			console.log('Added dino', dino.name, dino.entityId);
 			return dino;
 		}
 
@@ -68006,10 +68266,8 @@
 				spirit,
 				inventorySize: PARTS.length,
 				coords: [0, 0, 0],
-				// walkForce: 14000,
-				// jumpForce: 14000 * 22,
-				walkForce: 6000,
-				jumpForce: 6000 * 22,
+				// walkForce: 1000,
+				// jumpForce: 1000 * 20,
 			});
 			this.buildWorld();
 			const { gameScene } = this;
@@ -68074,7 +68332,7 @@
 
 			// const testDino = this.addNewDino();
 			// // testDino.autonomous = true;
-			// // testDino.mobile = false;
+			// testDino.mobile = false;
 			// testDino.coords = [200, 0, 40];
 			// // testDino.physics = false;
 			// testDino.setFacing(0);

@@ -108,6 +108,7 @@ class DinoInterface {
 		const percent = item.getInteractionPercent();
 		if (percent < 1) actionText += ` ${Math.floor(percent * 100)}%`;
 		DinoInterface.setText('#interaction-action-name', actionText);
+		DinoInterface.setText('#interaction-tip', (item.interactionEffort) ? 'Hold' : '');
 	}
 
 	updateDebug(debug, actor) {

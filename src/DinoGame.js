@@ -22,9 +22,9 @@ const PART = {
 	rooted: true,
 	scannable: true,
 	timeTravelPart: true,
-	interactionRange: PART_SIZE + 30,
+	interactionRange: PART_SIZE + 40,
 	interactionAction: 'Dig',
-	interactionEffort: 6,
+	interactionEffort: 100,
 	heightSizeOffset: 0,
 	inventoryDescription: 'This should be useful for rebuilding your time machine.',
 	interactionResult: {
@@ -90,6 +90,8 @@ const ITEMS = [
 	},
 ];
 
+const DEFAULT_TIME = 5; // ms
+
 // const { X, Y, Z } = ArrayCoords;
 const { Z } = ArrayCoords;
 
@@ -128,6 +130,13 @@ const SKY_COLOR_PER_HOUR = [
 	DARK_PURPLE, // 24
 ];
 
+const WALK_ANGLES = {
+	forward: 0,
+	back: PI, // Or -PI
+	left: HALF_PI,
+	right: -HALF_PI,
+};
+
 window.Speaker = Speaker;
 
 class DinoGame extends GenericGame {
@@ -158,10 +167,10 @@ class DinoGame extends GenericGame {
 		// Max spawn distance should be somwhat similar to half the size of all the chunks being shown
 		this.spawnRadii = [this.spawnActorDistance, 3500];
 		this.despawnRadius = this.spawnRadii[1] * 1.5;
-		this.spawnDinos = true;
 		this.timeMachine = null;
 		this.headBop = 0.5;
 		// this.testMode = true;
+		this.spawnDinos = true;
 	}
 
 	say(text) {
@@ -169,47 +178,84 @@ class DinoGame extends GenericGame {
 		this.speaker.speak(text);
 	}
 
+	walkCharacter(t, angles = [], sprint = false) {
+		if (!angles.length) return;
+		const angleSum = angles.reduce((sum, a) => sum + a, 0) / angles.length;
+		const method = (sprint ? 'sprint' : 'walk');
+		this.mainCharacter[method](t, angleSum);
+		if (this.mainCharacter.grounded) {
+			// this.sounds.play('footsteps', { random: 0.1 });
+			if (this.tick % 100 === 0) this.sounds.play('footsteps');
+			if (this.headBop) {
+				// TODO: this could be improved, and moved into the Actor class
+				// this.mainCharacter.heightSizeOffset = this.headBop * Math.sin(this.tick / 10);
+			}
+		}
+	}
+
+	interactNearest(t) {
+		const [, iItem] = this.findNearestInRangeInteractableItem(this.mainCharacter.coords);
+		if (!iItem) return;
+		if (this.tick % 100 === 0) this.sounds.play('collect');
+		const amount = t / 40;
+		const messages = this.ItemClass.interact(iItem, this.mainCharacter, amount);
+		if (messages) this.interface.addToLog(messages);
+		this.setHeightToTerrain(iItem, this.world);
+	}
+
+	handleCommandsDown(commands = [], t = DEFAULT_TIME) {
+		const splitCommands = commands.map((command) => command.split(' '));
+		// const firstCommands = commands.map((commandWords) => commandWords[0]);
+		const moves = splitCommands.filter((commandWords) => commandWords[0] === 'move');
+		let sprint = (commands.includes('sprint'));
+		const moveAngles = moves.map((moveCommandWords) => {
+			if (moveCommandWords[2] === 'sprint') sprint = true;
+			return WALK_ANGLES[moveCommandWords[1]];
+		});
+		if (this.kbCommander.isKeyDown('W')) moveAngles.push(WALK_ANGLES.forward);
+		if (this.kbCommander.isKeyDown('A')) moveAngles.push(WALK_ANGLES.left);
+		if (this.kbCommander.isKeyDown('S')) moveAngles.push(WALK_ANGLES.back);
+		if (this.kbCommander.isKeyDown('D')) moveAngles.push(WALK_ANGLES.right);
+		// if (sprint) console.log('sprint');
+		if (moveAngles.length) this.walkCharacter(t, moveAngles, sprint);
+		if (commands.includes('jump')) {
+			this.mainCharacter.jump(t);
+		}
+		if (commands.includes('interact nearest')) {
+			this.interactNearest(t);
+		}
+	}
+
 	handleCommand(command) {
 		const { mainCharacter } = this;
 		const commandWords = command.split(' ');
 		const firstCommand = commandWords[0];
 		if (firstCommand === 'move') {
-			// const spd = 10;
 			// Figure out the relative angle
-			let angleOfMovement = 0;
-			if (commandWords[1] === 'forward') angleOfMovement = 0;
-			else if (commandWords[1] === 'back') angleOfMovement += PI;
-			else if (commandWords[1] === 'left') angleOfMovement += HALF_PI;
-			else if (commandWords[1] === 'right') angleOfMovement -= HALF_PI;
-			mainCharacter.walk(angleOfMovement);
-			// const x = spd * Math.sin(angleOfMovement);
-			// const y = spd * Math.cos(angleOfMovement);
-			// mainCharacter.move([x, y, 0]);
-			// this.cameraCoords.position
-			if (this.mainCharacter.grounded) {
-				// this.sounds.play('footsteps', { random: 0.1 });
-				if (this.tick % 100 === 0) this.sounds.play('footsteps');
-				if (this.headBop) {
-					// TODO: this could be improved, and moved into the Actor class
-					this.mainCharacter.heightSizeOffset = this.headBop * Math.sin(this.tick / 10);
-				}
-			}
+			// const angleOfMovement = WALK_ANGLES[commandWords[1]];
+			// this.walkCharacter(DEFAULT_TIME, [angleOfMovement], commandWords[2] === 'sprint');
 		} else if (firstCommand === 'turn') {
 			let turnAmount = TAU / 50;
-			if (commandWords[1] === 'left') turnAmount *= -1;
+			if (commandWords[1] === 'right') turnAmount *= -1;
 			mainCharacter.turn(turnAmount);
 		} else if (firstCommand === 'interact') {
 			if (commandWords[1] === 'nearest') {
-				const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
-				if (!iItem) return;
 				this.sounds.play('collect');
-				const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
-				if (messages) this.interface.addToLog(messages);
-				this.setHeightToTerrain(iItem, this.world);
+				// const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
+				// if (!iItem) return;
+				// this.sounds.play('collect');
+				// const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
+				// if (messages) this.interface.addToLog(messages);
+				// this.setHeightToTerrain(iItem, this.world);
 			}
 		} else if (firstCommand === 'jump') {
-			const didJump = mainCharacter.jump();
-			if (didJump) this.sounds.play('jump');
+			// const didJump = mainCharacter.jump();
+			if (mainCharacter.grounded) this.sounds.play('jump');
+		} else if (firstCommand === 'stop') {
+			this.mainCharacter.vel = [0, 0, 0];
+			// This is a hack to stop a key-stuck bug
+			this.kbCommander.keysDown = {};
+			this.kbCommander.commandsDown = {};
 		}
 	}
 
@@ -217,7 +263,8 @@ class DinoGame extends GenericGame {
 		const [x, y, z] = entity.coords;
 		let h = world.getTerrainHeight(x, y);
 		h += (entity.heightSizeOffset * entity.size);
-		const grounded = (z <= h);
+		const grounded = (z <= h + 1);
+		// have a small offset of h (+1) so things aren't in the air going from one tiny bump downwards
 		if (grounded && !entity.grounded && entity.isCharacter) this.sounds.play('footsteps');
 		// TODO: play 'land' sound instead if velocity downward is high
 		entity.setGrounded(grounded, h);
@@ -253,9 +300,12 @@ class DinoGame extends GenericGame {
 		this.cameraPosition[Z] = 35 + (zoom ** 2);
 		// this.cameraPosition[Y] = -100 - zoom;
 
+		// Handle commands being held down
+		this.handleCommandsDown(this.kbCommander.getCommandsDown(), t);
+
 		// Generate terrain
 		const { mainCharacter, actors } = this;
-		const chunkRadius = Math.min(0 + Math.floor(this.tick / 50), 3);
+		const chunkRadius = Math.min(0 + Math.floor(this.tick / 70), 3);
 		const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 		// Update actors
 		actors.forEach((actor) => actor.update(t, this.world, this));
@@ -310,17 +360,6 @@ class DinoGame extends GenericGame {
 		const worldTimeArray = [
 			this.getWorldHour(), this.getWorldMinutes(),
 		];
-
-		// if (this.tick % 200 === 0) {
-		// 	console.log(
-		// 		worldTimeArray,
-		// 		// 'hr', this.getWorldHour(),
-		// 		// 'min', this.getWorldMinutes(),
-		// 		'sec', this.worldTime,
-		// 		'sunLightAngle', this.gameScene.sunLightAngle,
-		// 		'intensity', this.gameScene.getSunLightIntensity(),
-		// 	);
-		// }
 		const interfaceUpdates = {
 			actor: mainCharacter,
 			item: iItem,
@@ -352,23 +391,9 @@ class DinoGame extends GenericGame {
 		// const randColor = () => (0.5 + (Random.random() * 0.5));
 		const dinoKey = Random.pick(Object.keys(dinos));
 		const dinoOpt = dinos[dinoKey];
-		// 	name: 'Dino',
-		// 	autonomous: true,
-		// 	isDinosaur: true,
-		// 	wandering: true,
-		// 	size: 60,
-		// 	heightSizeOffset: 0,
-		// 	color: [randColor(), randColor(), randColor()],
-		// 	turnSpeed: TAU / 3000,
-		// 	walkForce: 10000,
-		// 	mass: 10000,
-		// 	// renderAs: 'sphere',
-		// 	renderAs: 'model',
-		// 	model,
-		// };
 		const dino = this.addNewActor(dinoOpt);
 		dino.coords = coords;
-		console.log('Added dino', dinoOpt);
+		console.log('Added dino', dino.name, dino.entityId);
 		return dino;
 	}
 
@@ -411,10 +436,8 @@ class DinoGame extends GenericGame {
 			spirit,
 			inventorySize: PARTS.length,
 			coords: [0, 0, 0],
-			// walkForce: 14000,
-			// jumpForce: 14000 * 22,
-			walkForce: 6000,
-			jumpForce: 6000 * 22,
+			// walkForce: 1000,
+			// jumpForce: 1000 * 20,
 		});
 		this.buildWorld();
 		const { gameScene } = this;
@@ -479,7 +502,7 @@ class DinoGame extends GenericGame {
 
 		// const testDino = this.addNewDino();
 		// // testDino.autonomous = true;
-		// // testDino.mobile = false;
+		// testDino.mobile = false;
 		// testDino.coords = [200, 0, 40];
 		// // testDino.physics = false;
 		// testDino.setFacing(0);

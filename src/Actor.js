@@ -10,13 +10,14 @@ class Actor extends Entity {
 		this.alive = true;
 		this.mobile = true;
 		this.physics = true;
-		this.mass = 60; // kg
+		this.mass = options.mass || 60; // kg
 		this.stamina = new Pool(50, 50);
 		this.staminaRegenPerSecond = 5;
-		this.staminaUsePerWalk = 0.2;
+		this.staminaUsePerWalk = 1.4; // per second
 		this.health = new Pool(50, 50);
 		this.healthRegenPerSecond = 2;
-		this.tiredMultiplier = 0.5;
+		this.tiredMultiplier = 0.3;
+		this.sprintMultiplier = 2;
 		this.emotions = [];
 		this.spiritId = options.spiritId;
 		this.isActor = true;
@@ -34,27 +35,34 @@ class Actor extends Entity {
 		this.fleeDistance = 0; // run away
 		this.maxWanderRange = 1000;
 		this.turnSpeed = TAU / 1000; // (radians/ms) one rotation in 1000 ms (1 second)
-		this.walkForce = 1200;
-		this.jumpForce = this.walkForce * 20;
+		this.walkForce = 1000 * this.mass;
+		this.jumpForce = this.walkForce * 100;
 		this.setProperties(options);
+		this.animationName = 'idle';
 	}
 
-	jump() {
+	jump(t) {
 		if (!this.grounded) return false;
 		let { jumpForce } = this;
 		if (this.stamina.atMin()) jumpForce *= this.tiredMultiplier;
-		this.applyForce([0, 0, jumpForce]);
+		this.applyImpulse(t, [0, 0, jumpForce]);
 		return true;
 	}
 
-	walk(directionOffset = 0, multiplier = 1) {
+	walk(t, directionOffset = 0, multiplier = 1) {
 		let { walkForce } = this;
-		walkForce *= multiplier;
+		walkForce *= multiplier; // a scalar force
+		const seconds = t / 1000;
 		// it feels good to walk in the air (a little bit at least)
 		if (!this.grounded) walkForce *= 0.2;
 		if (this.stamina.atMin()) walkForce *= this.tiredMultiplier;
-		this.applyMovementForce(walkForce, directionOffset);
-		this.stamina.subtract(this.staminaUsePerWalk);
+		this.applyPlanarImpulse(t, walkForce, directionOffset);
+		this.stamina.subtract(this.staminaUsePerWalk * multiplier * seconds);
+		this.animationName = 'walk';
+	}
+
+	sprint(t, direction = 0) {
+		this.walk(t, direction, this.sprintMultiplier);
 	}
 
 	heatUp(name, seconds) {
@@ -116,6 +124,7 @@ class Actor extends Entity {
 		if (this.stamina.atMin()) {
 			// Just rest
 			this.heatUp('planning', 30);
+			this.animationName = 'idle';
 			return { name: 'rest', moveTarget: null };
 		}
 		// Plan based on distances
@@ -142,6 +151,7 @@ class Actor extends Entity {
 			return { name: 'wander', moveTarget };
 			// console.log(this.name, 'planning a wander');
 		}
+		this.animationName = 'idle';
 		return { name: 'rest', moveTarget: null };
 	}
 
@@ -161,7 +171,7 @@ class Actor extends Entity {
 		const maxTurnRadians = t * this.turnSpeed * proximityFraction;
 		const remainderToTurn = this.turnToward(moveTarget, maxTurnRadians);
 		// Don't walk until we've turned
-		if (remainderToTurn < 0.2) this.walk(0, proximityFraction);
+		if (remainderToTurn < 0.2) this.walk(t, 0, proximityFraction);
 	}
 
 	update(t, world, game) {

@@ -14,7 +14,7 @@ class Entity {
 		this.vel = [0, 0, 0];
 		this.acc = [0, 0, 0];
 		// Good to stop velocity from skyrocketing
-		this.maxVelocity = 400;
+		this.maxVelocity = 600;
 		this.movementForce = 0; // track movement force just to know when entity is moving on its own
 		this.tags = [];
 		this.renderAs = 'box';
@@ -56,6 +56,7 @@ class Entity {
 
 	setGrounded(grounded, h) {
 		this.grounded = grounded;
+		// if (this.isCharacter) console.log(grounded, h);
 		if (typeof h === 'number' && grounded) this.setZ(h);
 	}
 
@@ -166,30 +167,40 @@ class Entity {
 		// if (this.isCharacter) console.log(JSON.stringify(this.acc));
 	}
 
-	applyMovementForce(force = 0, direction = 0) {
+	applyImpulse(t, directedForcePerSecond = [0, 0, 0]) {
+		const seconds = t / 1000;
+		const impulseForce = ArrayCoords.multiply(directedForcePerSecond, seconds);
+		this.applyForce(impulseForce);
+		this.movementForce = true;
+	}
+
+	// For walking on the x, y plane
+	applyPlanarImpulse(t, force = 0, direction = 0) {
 		const angleOfForce = (this.facing + direction); // not sure why we need to negate this
 		const directedForce = [
 			force * Math.cos(angleOfForce),
 			force * Math.sin(angleOfForce),
 			0,
 		];
-		this.applyForce(directedForce);
-		this.movementForce = force;
+		this.applyImpulse(t, directedForce);
 	}
 
 	updatePhysics(t, options = {}) {
 		if (!this.physics) return null;
 		const seconds = t / 1000;
 		const {
-			gravity = [0, 0, -6],
-			groundFriction = 0.94,
+			gravity = [0, 0, -80],
+			// Lower friction --> slows down velocity more
+			groundFriction = 0.92,
 			airFriction = 0.9999,
 			accelerationDecay = 0.9,
 		} = options;
+		// Acceleration due to gravity
+		if (!this.grounded) this.acc = ArrayCoords.add(this.acc, gravity);
 		// Velocity
 		const deltaVel = ArrayCoords.multiply(this.acc, seconds);
 		this.vel = ArrayCoords.add(this.vel, deltaVel);
-		if (!this.grounded) this.vel = ArrayCoords.add(this.vel, gravity);
+		// if (!this.grounded) this.vel = ArrayCoords.add(this.vel, gravity);
 		this.vel = ArrayCoords.clampEachCoord(this.vel, -this.maxVelocity, this.maxVelocity);
 		const deltaPos = ArrayCoords.multiply(this.vel, seconds);
 		this.coords = ArrayCoords.add(this.coords, deltaPos);
@@ -198,7 +209,7 @@ class Entity {
 		/// ...but let's try to make it last a little longer?
 		this.acc = ArrayCoords.multiply(this.acc, accelerationDecay);
 		// Friction
-		let friction = (this.grounded) ? groundFriction : airFriction;
+		let friction = groundFriction; // (this.grounded) ? groundFriction : airFriction;
 		if (this.movementForce) friction = airFriction; // no friction if moving/walking
 		this.vel = ArrayCoords.multiply(this.vel, friction);
 		this.vel = [

@@ -123,7 +123,7 @@ class DinoScene {
 		// pointLight.lookAt(new Vector3());
 		this.scene.add(pointLight);
 
-		const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+		const ambientLight = new THREE.AmbientLight(0x607070, 0.3);
 		this.scene.add(ambientLight);
 
 		// const sphereSize = 1;
@@ -200,6 +200,23 @@ class DinoScene {
 			? new THREE.Color(...colorParam) : new THREE.Color(colorParam);
 	}
 
+	animateObject(t, sceneObj, animationName) {
+		// TODO: Find a better home for this. not great to put this onto the object itself
+		if (typeof sceneObj.mixer === 'undefined') {
+			sceneObj.mixer = this.modelMgr.playClip(sceneObj, animationName);
+		} else if (sceneObj.mixer === null) {
+			// Do nothing
+		} else { // We have a mixer
+			if (animationName === sceneObj.lastAnimationName) {
+				sceneObj.mixer.update(t / 1000);
+				return;
+			}
+			// Animation names don't match, so start new mixer
+			sceneObj.mixer = this.modelMgr.playClip(sceneObj, animationName);
+			sceneObj.lastAnimationName = animationName;
+		}
+	}
+
 	update(options = {}, t = 5) { // time `t` is in milliseconds
 		// console.log(t);
 		const {
@@ -271,6 +288,8 @@ class DinoScene {
 					if (!sceneObj) console.warn('Could not add entity to scene', entity);
 				}
 				visibleEntityUuids.push(sceneObj.uuid);
+				// Do animation
+				this.animateObject(t, sceneObj, entity.animationName);
 			});
 			// Loop over all world objects and remove any not visible
 			this.removeNotVisible(this.entityGroup, visibleEntityUuids);
@@ -280,7 +299,7 @@ class DinoScene {
 			terrainChunks.forEach((chunk) => {
 				let sceneObj = this.entitySceneObjects[chunk.entityId];
 				if (sceneObj) {
-					this.applyTextureImageToObject(sceneObj, chunk.textureImage);
+					// this.applyTextureImageToObject(sceneObj, chunk.textureImage);
 				} else {
 					console.log('Adding terrain for chunk', chunk.entityId);
 					sceneObj = this.addNewTerrainChunkPlane(chunk);
@@ -332,17 +351,17 @@ class DinoScene {
 			console.warn('Cannot apply texture because image is not complete yet');
 		}
 		// FIXME: short-cutting this because it's not working
-		/*
+		return;
 		const texture = new THREE.Texture(textureImage);
 		texture.type = THREE.RGBAFormat;
+		texture.needsUpdate = true;
 		// console.log(texture, textureImage);
 		// new THREE.Texture(terrainChunk.image, {}, THREE.ClampToEdgeWrapping,
-			THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter,
-			THREE.RGBAFormat, THREE.UnsignedByteType, 0);
+		// THREE.ClampToEdgeWrapping, THREE.NearestFilter, THREE.NearestFilter,
+		// THREE.RGBAFormat, THREE.UnsignedByteType, 0);
 		const { material } = obj;
 		material.map = texture;
 		material.needsUpdate = true;
-		*/
 	}
 
 	applyHeightsToGeometry(geometry, heights /* , dataSize */) {
@@ -380,7 +399,11 @@ class DinoScene {
 
 	makeTerrainChunkPlane(terrainChunk = {}) {
 		// const texture = new THREE.TextureLoader().load('images/test-grid.jpg');
-		const { heights, segments, size, vertexDataSize, center,
+		const {
+			heights, segments, size, vertexDataSize, center,
+			textureData,
+			textureWidth = 256,
+			textureHeight = 256,
 			color = 0x55ffbb,
 		} = terrainChunk;
 		// const segments = 8;
@@ -409,11 +432,17 @@ class DinoScene {
 		// heightMap.wrapS = THREE.RepeatWrapping;
 		// heightMap.wrapT = THREE.RepeatWrapping;
 
-		// const material = new THREE.MeshStandardMaterial({
-		const material = new THREE.MeshPhongMaterial({
+		const texture = new THREE.DataTexture(
+			textureData, textureWidth, textureHeight, THREE.RGBAFormat,
+		);
+		texture.needsUpdate = true;
+
+		// const material = new THREE.MeshBasicMaterial({
+		const material = new THREE.MeshStandardMaterial({
+		// const material = new THREE.MeshPhongMaterial({ // better performance
 			// opacity: 0.9,
 			color,
-			// map: texture,
+			map: texture, // texture
 			// vertexColors: true,
 			// wireframe: true,
 			side: THREE.DoubleSide,

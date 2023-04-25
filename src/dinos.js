@@ -1,5 +1,7 @@
 import { TAU } from 'rocket-utility-belt';
 
+const defaultMass = 10000;
+
 const defaultDino = {
 	name: 'Dino',
 	autonomous: true,
@@ -8,12 +10,13 @@ const defaultDino = {
 	size: 60,
 	heightSizeOffset: 0,
 	// color: [randColor(), randColor(), randColor()],
-	walkForce: 10000,
-	mass: 10000,
+	walkForce: 900 * defaultMass,
+	mass: defaultMass,
 	attentionDistance: 1000,
 	fleeDistance: 0,
 	huntDistance: 0,
 	renderAs: 'model', // renderAs: 'sphere',
+	turnSpeed: TAU / 3000,
 };
 const dinos = {
 	apat: {
@@ -21,29 +24,29 @@ const dinos = {
 		model: 'apat',
 		faction: 'herbivore',
 		name: 'Dino apat',
-		mass: 20000,
-		turnSpeed: TAU / 3000,
+		mass: defaultMass * 2.5,
+		turnSpeed: TAU / 5000,
 	},
 	para: {
 		...defaultDino,
 		model: 'para',
 		faction: 'herbivore',
 		name: 'Dino para',
-		mass: 6000,
+		mass: defaultMass * 0.6,
 	},
 	steg: {
 		...defaultDino,
 		model: 'steg',
 		faction: 'herbivore',
 		name: 'Dino steg',
-		mass: 10000,
+		mass: defaultMass,
 	},
 	trex: {
 		...defaultDino,
 		model: 'trex',
 		faction: 'trex',
 		name: 'Dino trex',
-		mass: 12000,
+		mass: defaultMass * 1.5,
 		huntDistance: 500,
 	},
 	tric: {
@@ -51,14 +54,14 @@ const dinos = {
 		model: 'tric',
 		faction: 'tric',
 		name: 'Dino tric',
-		mass: 10000,
+		mass: defaultMass * 1.3,
 	},
 	velo: {
 		...defaultDino,
 		model: 'velo',
 		faction: 'velo',
 		name: 'Dino velo',
-		mass: 5000,
+		mass: defaultMass * 0.5,
 		huntDistance: 500,
 	},
 };

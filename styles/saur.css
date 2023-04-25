@@ -61,6 +61,7 @@ label[for]:hover {
 	position: absolute;
 	top: 40%;
 	left: 2vmin;
+	color: pink;
 }
 
 #interaction {
@@ -73,6 +74,10 @@ label[for]:hover {
 	top: 40vh;
 	left: 30vw;
 	color: white;
+}
+#interaction-tip {
+	display: inline-block;
+	opacity: 0.5;
 }
 
 #crosshairs {
@@ -371,7 +376,8 @@ label[for]:hover {
 #log-list li {
 	display: block;
 	opacity: 0.5;
-	padding: 1em 2em;
+	padding: 1vmin 2vmin;
+	min-width: 6em;
 	margin: 0;
 	border-bottom: dotted 1px rgba(255, 255, 255, 0.5);
 }
@@ -467,6 +473,14 @@ label[for]:hover {
 #main-menu {
 	/* border: solid 1vmin #508d76; */
 	color: #f0e9c9;
+}
+
+.main-menu-header {
+	position: relative;
+}
+
+.version {
+	opacity: 0.25;
 }
 
 .main-menu-content {
