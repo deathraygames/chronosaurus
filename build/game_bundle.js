@@ -67167,7 +67167,7 @@
 		},
 	};
 
-	const INTRO_TIME = 7000;
+	const INTRO_TIME = 11000;
 
 	const states = {
 		loading: {
@@ -67202,6 +67202,7 @@
 				game.interface.hide('#main-menu-loading');
 				game.interface.show('#menu');
 				if (game.testMode) game.transition('explore'); // For testing
+				else game.say([1000, 'Your time machine', 500, 'is ready.']);
 			},
 			stop(game) {
 				game.interface.hideMainMenu();
@@ -67217,6 +67218,14 @@
 				const song = game.sounds.playMusic('panic');
 				if (song) song.seek(65).fade(0, 0.75, 500);
 				game.interface.show('#intro');
+				game.say([
+					100,
+					'You enter your time machine', 300,
+					'To go back and make things better', 400,
+					'But something\'s gone wrong.', 400,
+					'You\'re going too far back', 200,
+					'and the machine rumbles',
+				]);
 				const waitTime = (game.testMode) ? 1000 : INTRO_TIME;
 				setTimeout(() => game.transition('explore'), waitTime);
 			},
@@ -67229,6 +67238,15 @@
 				game.sounds.play('explode', { delay: 1000 });
 				game.sounds.play('explode', { delay: 2500 });
 				game.sounds.play('scary');
+				game.say([
+					4000, 'Warning: The time machine has undergone rapid unscheduled disassembly.',
+					5000, 'No casualties or injuries identified.',
+					1000, 'Try moving around.',
+					7000, 'Time sensors are offline. Cannot identify what year it is.',
+					7000, 'Scanner functionality is nominal. Picking up signals from the time machine\'s missing parts.',
+					5000, 'Warning: Leaving parts behind could have unintended consequences for the timeline\'s continuity.',
+					10000, 'You should be able to re-build the time machine if you find enough parts.',
+				]);
 			},
 		},
 		explore: {
@@ -67277,6 +67295,9 @@
 		},
 		win: {
 			start: async (game) => {
+				game.say([
+					'Time machine activated.', 100, 'Returning you to the future.',
+				]);
 				game.sounds.play('teleport');
 				game.sounds.playMusic('home');
 				game.interface.showWin();
@@ -67388,6 +67409,206 @@
 		wandering: './audio/music/Chronosaurus_Wandering_Theme.mp3',
 	};
 
+	// const VOICE_RATES = [0.5, 1, 1, 1, 1.5, 1.75];
+	// const VOICE_PITCHES = [0.1, 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1, 1, 1.5, 2];
+	const VOICE_NAMES = {
+		David: 'Microsoft David - English (United States)',
+		Mark: 'Microsoft Mark - English (United States)',
+		Zira: 'Microsoft Zira - English (United States)',
+		Olivia: 'Google US English', // Female
+		Lily: 'Google UK English Female',
+		Jack: 'Google UK English Male',
+	};
+
+	class Speaker {
+		constructor(options = {}) {
+			const {
+				rate = 1,
+				pitch = 1,
+				voice = 0,
+			} = options;
+			// Dependencies
+			this.setTimeout = window.setTimeout;
+			this.speechSynthesis = window.speechSynthesis;
+			this.SpeechSynthesisUtterance = window.SpeechSynthesisUtterance;
+			// Properties
+			this.voiceList = [];
+			this.voice = Speaker.findVoice(voice);
+			this.rate = rate;
+			this.pitch = pitch;
+			// TODO: Is there a better way to set this up?
+			this.speechSynthesis.onvoiceschanged = () => {
+				this.voice = Speaker.findVoice(voice);
+			};
+		}
+
+		static warn(...args) {
+			console.warn(...args);
+		}
+
+		static findVoice(param, synth = window.speechSynthesis) {
+			if (typeof param === 'string') {
+				return Speaker.findVoiceByName(param, synth);
+			}
+			if (typeof param === 'number') {
+				return Speaker.getVoiceByIndex(param, synth);
+			}
+			if (typeof param === 'object') {
+				// Assume that this is a SpeechSynthesisVoice object
+				// TODO: Maybe allow a voiceParam that's a non-SpeechSynthesisVoice object
+				// to allow looking up of voices by gender, language, etc.
+				return param;
+			}
+			Speaker.warn('Could not find voice', param, 'so using default of first voice');
+			return Speaker.getVoiceByIndex(0, synth);
+		}
+
+		/**
+		 * Find a voice by name
+		 * @param {String} name - Can be the long name of the voice or a short, abbreviated name
+		 * @param {Object} synth - window.speechSynthesis
+		 * @returns SpeechSynthesisVoice
+		 */
+		static findVoiceByName(name, synth = window.speechSynthesis) {
+			const allVoices = Speaker.getVoices(synth);
+			const found = allVoices.find((voice) => (voice.name === name));
+			if (found) return found;
+			const longName = VOICE_NAMES[name];
+			if (!longName) return undefined;
+			return allVoices.find((voice) => (voice.name === longName));
+		}
+
+		/**
+		 * Get all voices that are offered
+		 * @param {speechSynthesis} synth
+		 * @returns SpeechSynthesisVoice
+		 */
+		static getVoices(synth = window.speechSynthesis) {
+			// TODO: Make this async and wait for onvoiceschanged?
+			return synth.getVoices();
+		}
+
+		static getEnglishVoices(synth = window.speechSynthesis) {
+			return Speaker.getVoices(synth).filter((voice) => (voice.lang.substring(0, 1) === 'en'));
+		}
+
+		static getVoiceByIndex(i, synth = window.speechSynthesis) {
+			const voices = Speaker.getVoices(synth);
+			return voices[i];
+		}
+
+		static computerSpeak(text, synth = window.speechSynthesis) {
+			synth.cancel();
+			Speaker.speak(text, 0, 0.3, 1.5);
+		}
+
+		static getSilenceTag(silenceMs = 0) {
+			// NOTE: This only seems to work with David and Mark
+			return `<silence msec="${Number(silenceMs)}" />`;
+		}
+
+		static joinArray(array = []) {
+			return array.map((item) => {
+				if (typeof item === 'string') return item;
+				if (typeof item === 'number') return Speaker.getSilenceTag(item);
+				if (typeof item === 'object') return Speaker.getSilenceTag(item.silence);
+				return '';
+			}).join(' ');
+		}
+
+		static speak(
+			textParam = '',
+			voiceParam = 0,
+			pitch = 1,
+			rate = 1,
+			silence = 0,
+			SpeechSynthesisUtterance = window.SpeechSynthesisUtterance,
+			synth = window.speechSynthesis,
+		) {
+			// Based on Oxygen Levels Critical, which in turn is based on
+			// an example from https://mdn.github.io/web-speech-api/speak-easy-synthesis/
+			let text = String(textParam);
+			if (silence) text = Speaker.getSilenceTag(silence) + text;
+			const utterance = new SpeechSynthesisUtterance(text);
+			const voice = Speaker.findVoice(voiceParam, synth);
+			utterance.voice = voice;
+			utterance.pitch = pitch;
+			utterance.rate = rate;
+			// utterance.onpause = (event) => {
+			// console.log('Speech paused', event);
+			// const char = event.utterance.text.charAt(event.charIndex);
+			// };
+			synth.speak(utterance);
+		}
+
+		speakText(text) {
+			this.speechSynthesis.cancel();
+			Speaker.speak(
+				text,
+				this.voice,
+				this.pitch,
+				this.rate,
+				0,
+				this.SpeechSynthesisUtterance,
+				this.speechSynthesis,
+			);
+			return this;
+		}
+
+		speak(param, param2) {
+			if (typeof param === 'string') {
+				return this.speak({ text: param, ...param2 });
+			}
+			if (typeof param !== 'object') {
+				return this.speakText(String(param));
+			}
+			if (param instanceof Array) {
+				const text = Speaker.joinArray(param);
+				return this.speak({ text, ...param2 });
+			}
+			const {
+				text = '',
+				silence = 0,
+				cancel = true,
+			} = param;
+			if (cancel) this.speechSynthesis.cancel();
+			Speaker.speak(
+				text,
+				this.voice,
+				this.pitch,
+				this.rate,
+				silence,
+				this.SpeechSynthesisUtterance,
+				this.speechSynthesis,
+			);
+			return this;
+		}
+
+		cancel() {
+			this.speechSynthesis.cancel();
+			return this;
+		}
+
+		wait(t = 0) {
+			return new Promise((resolve) => {
+				this.setTimeout(resolve, t);
+			});
+		}
+
+		pause(/* t = Infinity */) {
+			this.speechSynthesis.pause();
+			// if (t !== Infinity) {
+			// this.setTimeout(() => this.resume(), t);
+			// }
+			return this;
+		}
+
+		resume() {
+			this.speechSynthesis.resume();
+			return this;
+		}
+	}
+
 	const PART_SIZE = 20;
 	const PART = {
 		name: 'Time travel machine part',
@@ -67416,10 +67637,10 @@
 		model: 'gear',
 	};
 	const PARTS = [
-		{ ...PART, randomAtRadius: 300, model: 'computer', heightSizeOffset: -0.5 },
 		{ ...PART, randomAtRadius: 400, model: 'sputnik', heightSizeOffset: -0.5 },
 		{ ...PART, randomAtRadius: 600 },
-		{ ...PART, randomAtRadius: 800, model: 'commandPod', heightSizeOffset: -0.25 },
+		{ ...PART, randomAtRadius: 700, model: 'computer', heightSizeOffset: -0.5 },
+		{ ...PART, randomAtRadius: 1200, model: 'commandPod', heightSizeOffset: -0.25 },
 		{ ...PART, randomAtRadius: 2200, model: 'sputnik' },
 		{ ...PART, randomAtRadius: 2000 },
 		{ ...PART, randomAtRadius: 3000, model: 'sputnik' },
@@ -67502,6 +67723,8 @@
 		DARK_PURPLE, // 24
 	];
 
+	window.Speaker = Speaker;
+
 	class DinoGame extends GenericGame {
 		constructor() {
 			super({
@@ -67519,6 +67742,7 @@
 				SoundControllerClass: DinoSoundController,
 				// SoundControllerClass: SoundController,
 			});
+			this.speaker = new Speaker({ voice: 'David', pitch: 1.2, rate: 0.9 });
 			this.pointerLocker = new PointerLocker();
 			this.cameraPosition = [0, 0, 0];
 			this.cameraVerticalRotation = HALF_PI$1;
@@ -67531,8 +67755,13 @@
 			this.despawnRadius = this.spawnRadii[1] * 1.5;
 			this.spawnDinos = true;
 			this.timeMachine = null;
-			this.headBop = true;
+			this.headBop = 0.5;
 			// this.testMode = true;
+		}
+
+		say(text) {
+			if (!this.sounds.isSoundsOn) return;
+			this.speaker.speak(text);
 		}
 
 		handleCommand(command) {
@@ -67557,7 +67786,7 @@
 					if (this.tick % 100 === 0) this.sounds.play('footsteps');
 					if (this.headBop) {
 						// TODO: this could be improved, and moved into the Actor class
-						this.mainCharacter.heightSizeOffset = Math.sin(this.tick / 10);
+						this.mainCharacter.heightSizeOffset = this.headBop * Math.sin(this.tick / 10);
 					}
 				}
 			} else if (firstCommand === 'turn') {

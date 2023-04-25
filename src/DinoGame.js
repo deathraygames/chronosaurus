@@ -12,6 +12,7 @@ import models from './models.js';
 import states from './states.js';
 import dinos from './dinos.js';
 import { sounds, music } from './soundsAndMusic.js';
+import Speaker from './Speaker.js';
 
 const PART_SIZE = 20;
 const PART = {
@@ -41,10 +42,10 @@ const PART = {
 	model: 'gear',
 };
 const PARTS = [
-	{ ...PART, randomAtRadius: 300, model: 'computer', heightSizeOffset: -0.5 },
 	{ ...PART, randomAtRadius: 400, model: 'sputnik', heightSizeOffset: -0.5 },
 	{ ...PART, randomAtRadius: 600 },
-	{ ...PART, randomAtRadius: 800, model: 'commandPod', heightSizeOffset: -0.25 },
+	{ ...PART, randomAtRadius: 700, model: 'computer', heightSizeOffset: -0.5 },
+	{ ...PART, randomAtRadius: 1200, model: 'commandPod', heightSizeOffset: -0.25 },
 	{ ...PART, randomAtRadius: 2200, model: 'sputnik' },
 	{ ...PART, randomAtRadius: 2000 },
 	{ ...PART, randomAtRadius: 3000, model: 'sputnik' },
@@ -127,6 +128,8 @@ const SKY_COLOR_PER_HOUR = [
 	DARK_PURPLE, // 24
 ];
 
+window.Speaker = Speaker;
+
 class DinoGame extends GenericGame {
 	constructor() {
 		super({
@@ -144,6 +147,7 @@ class DinoGame extends GenericGame {
 			SoundControllerClass: DinoSoundController,
 			// SoundControllerClass: SoundController,
 		});
+		this.speaker = new Speaker({ voice: 'David', pitch: 1.2, rate: 0.9 });
 		this.pointerLocker = new PointerLocker();
 		this.cameraPosition = [0, 0, 0];
 		this.cameraVerticalRotation = HALF_PI;
@@ -156,8 +160,13 @@ class DinoGame extends GenericGame {
 		this.despawnRadius = this.spawnRadii[1] * 1.5;
 		this.spawnDinos = true;
 		this.timeMachine = null;
-		this.headBop = true;
+		this.headBop = 0.5;
 		// this.testMode = true;
+	}
+
+	say(text) {
+		if (!this.sounds.isSoundsOn) return;
+		this.speaker.speak(text);
 	}
 
 	handleCommand(command) {
@@ -182,7 +191,7 @@ class DinoGame extends GenericGame {
 				if (this.tick % 100 === 0) this.sounds.play('footsteps');
 				if (this.headBop) {
 					// TODO: this could be improved, and moved into the Actor class
-					this.mainCharacter.heightSizeOffset = Math.sin(this.tick / 10);
+					this.mainCharacter.heightSizeOffset = this.headBop * Math.sin(this.tick / 10);
 				}
 			}
 		} else if (firstCommand === 'turn') {

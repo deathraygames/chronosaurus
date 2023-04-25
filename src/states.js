@@ -1,4 +1,4 @@
-const INTRO_TIME = 7000;
+const INTRO_TIME = 11000;
 
 const states = {
 	loading: {
@@ -33,6 +33,7 @@ const states = {
 			game.interface.hide('#main-menu-loading');
 			game.interface.show('#menu');
 			if (game.testMode) game.transition('explore'); // For testing
+			else game.say([1000, 'Your time machine', 500, 'is ready.']);
 		},
 		stop(game) {
 			game.interface.hideMainMenu();
@@ -48,6 +49,14 @@ const states = {
 			const song = game.sounds.playMusic('panic');
 			if (song) song.seek(65).fade(0, 0.75, 500);
 			game.interface.show('#intro');
+			game.say([
+				100,
+				'You enter your time machine', 300,
+				'To go back and make things better', 400,
+				'But something\'s gone wrong.', 400,
+				'You\'re going too far back', 200,
+				'and the machine rumbles',
+			]);
 			const waitTime = (game.testMode) ? 1000 : INTRO_TIME;
 			setTimeout(() => game.transition('explore'), waitTime);
 		},
@@ -60,6 +69,15 @@ const states = {
 			game.sounds.play('explode', { delay: 1000 });
 			game.sounds.play('explode', { delay: 2500 });
 			game.sounds.play('scary');
+			game.say([
+				4000, 'Warning: The time machine has undergone rapid unscheduled disassembly.',
+				5000, 'No casualties or injuries identified.',
+				1000, 'Try moving around.',
+				7000, 'Time sensors are offline. Cannot identify what year it is.',
+				7000, 'Scanner functionality is nominal. Picking up signals from the time machine\'s missing parts.',
+				5000, 'Warning: Leaving parts behind could have unintended consequences for the timeline\'s continuity.',
+				10000, 'You should be able to re-build the time machine if you find enough parts.',
+			]);
 		},
 	},
 	explore: {
@@ -108,6 +126,9 @@ const states = {
 	},
 	win: {
 		start: async (game) => {
+			game.say([
+				'Time machine activated.', 100, 'Returning you to the future.',
+			]);
 			game.sounds.play('teleport');
 			game.sounds.playMusic('home');
 			game.interface.showWin();
