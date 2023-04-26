@@ -8,6 +8,7 @@ const defaultDino = {
 	isDinosaur: true,
 	wandering: true,
 	size: 60,
+	damageRange: 60,
 	heightSizeOffset: 0,
 	// color: [randColor(), randColor(), randColor()],
 	walkForce: 900 * defaultMass,

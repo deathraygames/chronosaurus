@@ -1,6 +1,6 @@
 {
   "name": "chronosaurus",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "game for gamedev.js 2023 game jam",
   "main": "./src/index.js",
   "scripts": {

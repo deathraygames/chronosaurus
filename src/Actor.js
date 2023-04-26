@@ -1,7 +1,7 @@
 import { ArrayCoords, Random, TAU, PI, Pool } from 'rocket-utility-belt';
 import Entity from './Entity.js';
 
-const CLOSE_ENOUGH = 40; // 2m
+const CLOSE_ENOUGH = 100; // 2m
 const SLOW_DIST = 500; // 25m ~ 8 ft
 
 class Actor extends Entity {
@@ -33,12 +33,19 @@ class Actor extends Entity {
 		this.huntDistance = 0; // Goes aggro if hungry and has stamina
 		this.attentionDistance = 900; // Turns and looks
 		this.fleeDistance = 0; // run away
-		this.maxWanderRange = 1000;
+		this.damageRange = 40;
+		this.maxWanderRange = 1400;
 		this.turnSpeed = TAU / 1000; // (radians/ms) one rotation in 1000 ms (1 second)
 		this.walkForce = 1000 * this.mass;
 		this.jumpForce = this.walkForce * 100;
 		this.setProperties(options);
 		this.animationName = 'idle';
+	}
+
+	getDamage() {
+		const m = this.aggro ? 2 : 1;
+		this.animationName = 'attack'; // TODO: put this somewhere else
+		return (10 + Random.randomInt(10)) * m;
 	}
 
 	jump(t) {
@@ -106,15 +113,17 @@ class Actor extends Entity {
 		const [dist, who] = gameWorld.findNearestActor(this.coords, filter);
 		if (!who) return [dist, who];
 		if (dist < this.fleeDistance) {
-			console.log(this.name, 'wants to flee');
-			// TODO: run away
-			// this.heatUp('planning', 3);
+			// Don't set the `lookTargetEntity` because we don't want to turn and look at
+			// the thing we're scared of, we'd rather look away
+			this.lookTargetEntity = null;
+			this.lookTargetDistance = dist;
 		} else if (dist < this.attentionDistance
 			|| dist < this.huntDistance
 		) {
 			this.lookTargetEntity = who;
-			// console.log(this.name, 'wants to look at', who.coords);
+			this.lookTargetDistance = dist;
 		}
+		// console.log('Looking', dist, who);
 		return [dist, who];
 	}
 
@@ -124,34 +133,34 @@ class Actor extends Entity {
 		if (this.stamina.atMin()) {
 			// Just rest
 			this.heatUp('planning', 30);
-			this.animationName = 'idle';
 			return { name: 'rest', moveTarget: null };
 		}
 		// Plan based on distances
 		const { lookTargetDistance } = this;
-		if (lookTargetDistance < this.fleeDistance) {
+		if (lookTargetDistance < this.fleeDistance && Random.chance(0.8)) {
 			const angleToThreat = ArrayCoords.getAngleFacing(this.coords, this.lookTargetEntity.coords);
 			const angleAway = (angleToThreat + PI) % TAU;
 			const moveTarget = ArrayCoords.polarToCartesian(this.fleeDistance, angleAway);
+			this.heatUp('planning', Random.randomInt(8));
 			return { name: 'flee', moveTarget };
 		}
-		if (lookTargetDistance < this.huntDistance) {
+		if (lookTargetDistance < this.huntDistance && Random.chance(0.8)) {
 			this.heatUp('planning', 1); // re-plan soon so we can follow
-			this.moveTarget = [...this.lookTargetEntity.coords];
-			return { name: 'hunt', moveTarget: null };
+			const moveTarget = [...this.lookTargetEntity.coords];
+			return { name: 'hunt', moveTarget, aggro: true };
 		}
 		if (lookTargetDistance < this.attentionDistance && Random.chance(0.5)) {
+			this.heatUp('planning', 2 + Random.randomInt(8));
 			return { name: 'watch', moveTarget: null };
 		}
 		if (this.wandering) {
 			const deltaX = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 			const deltaY = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 			const moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
-			this.heatUp('planning', 30);
+			this.heatUp('planning', 11 + Random.randomBell(10));
 			return { name: 'wander', moveTarget };
 			// console.log(this.name, 'planning a wander');
 		}
-		this.animationName = 'idle';
 		return { name: 'rest', moveTarget: null };
 	}
 
@@ -163,8 +172,16 @@ class Actor extends Entity {
 			}
 			return;
 		}
-		const distanceToTarget = ArrayCoords.getDistance(this.coords, moveTarget);
-		if (distanceToTarget < CLOSE_ENOUGH) return;
+		// Since moveTarget usually doesn't have a z component, we don't want to
+		// include our z values in the distance calculation.
+		const [x, y] = this.coords;
+		const coords2d = [x, y, 0];
+		const distanceToTarget = ArrayCoords.getDistance(coords2d, moveTarget);
+		if (distanceToTarget < CLOSE_ENOUGH) {
+			// console.log('Got to target');
+			this.currentPlan = { name: 'rest', moveTarget: null };
+			return;
+		}
 		// Do things slower if we're near the destination
 		const proximityFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
 		// Don't turn faster than your turn speed
@@ -181,9 +198,12 @@ class Actor extends Entity {
 		this.updateTimers(seconds);
 		// this.updateEmotions(t);
 		this.updateLook(t, game);
+		// Make a plan and handle it
 		const newPlan = this.updatePlan(t);
 		if (newPlan) this.currentPlan = newPlan;
+		this.aggro = this.currentPlan.aggro || false;
 		this.updateMovement(t, this.currentPlan.moveTarget);
+		if (this.currentPlan.name === 'rest') this.animationName = 'idle';
 		this.updatePhysics(t);
 	}
 }

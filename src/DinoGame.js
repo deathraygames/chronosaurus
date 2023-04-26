@@ -134,7 +134,7 @@ const WALK_ANGLES = {
 	forward: 0,
 	back: PI, // Or -PI
 	left: HALF_PI,
-	right: -HALF_PI,
+	right: -HALF_PI, // FIXME: Tried PI + HALF_PI, but that also gives issues
 };
 
 window.Speaker = Speaker;
@@ -282,6 +282,19 @@ class DinoGame extends GenericGame {
 		return dead;
 	}
 
+	checkEncounter(t) {
+		const { mainCharacter, actors } = this;
+		const damagingActors = actors.filter((actor) => {
+			const dist = ArrayCoords.getDistance(mainCharacter.coords, actor.coords);
+			const inDamageRange = dist <= actor.damageRange;
+			return (!actor.isCharacter && inDamageRange);
+		});
+		damagingActors.forEach((actor) => {
+			const dmg = actor.getDamage() * (t / 1000);
+			mainCharacter.health.subtract(dmg);
+		});
+	}
+
 	gameTick(t) {
 		super.gameTick(t);
 
@@ -310,6 +323,9 @@ class DinoGame extends GenericGame {
 		// Update actors
 		actors.forEach((actor) => actor.update(t, this.world, this));
 		actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
+
+		this.checkEncounter(t);
+
 		return { terrainChunks };
 	}
 
@@ -421,7 +437,7 @@ class DinoGame extends GenericGame {
 		ITEMS.forEach((itemData) => {
 			this.addNewItem(itemData);
 		});
-		this.addNewTrees(30);
+		this.addNewTrees(32);
 		this.items.forEach((item) => {
 			if (item.rooted) {
 				this.setHeightToTerrain(item, this.world);

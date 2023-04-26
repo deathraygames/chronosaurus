@@ -124,6 +124,7 @@ const states = {
 			setTimeout(() => {
 				game.mainCharacter.coords = [0, 0, 0]; // eslint-disable-line no-param-reassign
 				game.sounds.play('teleport');
+				game.mainCharacter.health.add(1); // otherwise we'll end up back here
 				game.transition('explore');
 			}, 5000);
 		},

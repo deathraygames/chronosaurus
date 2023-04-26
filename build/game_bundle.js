@@ -66732,7 +66732,7 @@
 		}
 	}
 
-	const CLOSE_ENOUGH = 40; // 2m
+	const CLOSE_ENOUGH = 100; // 2m
 	const SLOW_DIST = 500; // 25m ~ 8 ft
 
 	class Actor extends Entity {
@@ -66764,12 +66764,19 @@
 			this.huntDistance = 0; // Goes aggro if hungry and has stamina
 			this.attentionDistance = 900; // Turns and looks
 			this.fleeDistance = 0; // run away
-			this.maxWanderRange = 1000;
+			this.damageRange = 40;
+			this.maxWanderRange = 1400;
 			this.turnSpeed = TAU$1 / 1000; // (radians/ms) one rotation in 1000 ms (1 second)
 			this.walkForce = 1000 * this.mass;
 			this.jumpForce = this.walkForce * 100;
 			this.setProperties(options);
 			this.animationName = 'idle';
+		}
+
+		getDamage() {
+			const m = this.aggro ? 2 : 1;
+			this.animationName = 'attack'; // TODO: put this somewhere else
+			return (10 + Random.randomInt(10)) * m;
 		}
 
 		jump(t) {
@@ -66837,15 +66844,17 @@
 			const [dist, who] = gameWorld.findNearestActor(this.coords, filter);
 			if (!who) return [dist, who];
 			if (dist < this.fleeDistance) {
-				console.log(this.name, 'wants to flee');
-				// TODO: run away
-				// this.heatUp('planning', 3);
+				// Don't set the `lookTargetEntity` because we don't want to turn and look at
+				// the thing we're scared of, we'd rather look away
+				this.lookTargetEntity = null;
+				this.lookTargetDistance = dist;
 			} else if (dist < this.attentionDistance
 				|| dist < this.huntDistance
 			) {
 				this.lookTargetEntity = who;
-				// console.log(this.name, 'wants to look at', who.coords);
+				this.lookTargetDistance = dist;
 			}
+			// console.log('Looking', dist, who);
 			return [dist, who];
 		}
 
@@ -66855,34 +66864,34 @@
 			if (this.stamina.atMin()) {
 				// Just rest
 				this.heatUp('planning', 30);
-				this.animationName = 'idle';
 				return { name: 'rest', moveTarget: null };
 			}
 			// Plan based on distances
 			const { lookTargetDistance } = this;
-			if (lookTargetDistance < this.fleeDistance) {
+			if (lookTargetDistance < this.fleeDistance && Random.chance(0.8)) {
 				const angleToThreat = ArrayCoords.getAngleFacing(this.coords, this.lookTargetEntity.coords);
 				const angleAway = (angleToThreat + PI$1) % TAU$1;
 				const moveTarget = ArrayCoords.polarToCartesian(this.fleeDistance, angleAway);
+				this.heatUp('planning', Random.randomInt(8));
 				return { name: 'flee', moveTarget };
 			}
-			if (lookTargetDistance < this.huntDistance) {
+			if (lookTargetDistance < this.huntDistance && Random.chance(0.8)) {
 				this.heatUp('planning', 1); // re-plan soon so we can follow
-				this.moveTarget = [...this.lookTargetEntity.coords];
-				return { name: 'hunt', moveTarget: null };
+				const moveTarget = [...this.lookTargetEntity.coords];
+				return { name: 'hunt', moveTarget, aggro: true };
 			}
 			if (lookTargetDistance < this.attentionDistance && Random.chance(0.5)) {
+				this.heatUp('planning', 2 + Random.randomInt(8));
 				return { name: 'watch', moveTarget: null };
 			}
 			if (this.wandering) {
 				const deltaX = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 				const deltaY = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
 				const moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
-				this.heatUp('planning', 30);
+				this.heatUp('planning', 11 + Random.randomBell(10));
 				return { name: 'wander', moveTarget };
 				// console.log(this.name, 'planning a wander');
 			}
-			this.animationName = 'idle';
 			return { name: 'rest', moveTarget: null };
 		}
 
@@ -66894,8 +66903,16 @@
 				}
 				return;
 			}
-			const distanceToTarget = ArrayCoords.getDistance(this.coords, moveTarget);
-			if (distanceToTarget < CLOSE_ENOUGH) return;
+			// Since moveTarget usually doesn't have a z component, we don't want to
+			// include our z values in the distance calculation.
+			const [x, y] = this.coords;
+			const coords2d = [x, y, 0];
+			const distanceToTarget = ArrayCoords.getDistance(coords2d, moveTarget);
+			if (distanceToTarget < CLOSE_ENOUGH) {
+				// console.log('Got to target');
+				this.currentPlan = { name: 'rest', moveTarget: null };
+				return;
+			}
 			// Do things slower if we're near the destination
 			const proximityFraction = (distanceToTarget > SLOW_DIST) ? 1 : (distanceToTarget / SLOW_DIST);
 			// Don't turn faster than your turn speed
@@ -66912,9 +66929,12 @@
 			this.updateTimers(seconds);
 			// this.updateEmotions(t);
 			this.updateLook(t, game);
+			// Make a plan and handle it
 			const newPlan = this.updatePlan(t);
 			if (newPlan) this.currentPlan = newPlan;
+			this.aggro = this.currentPlan.aggro || false;
 			this.updateMovement(t, this.currentPlan.moveTarget);
+			if (this.currentPlan.name === 'rest') this.animationName = 'idle';
 			this.updatePhysics(t);
 		}
 	}
@@ -67525,6 +67545,7 @@
 				setTimeout(() => {
 					game.mainCharacter.coords = [0, 0, 0]; // eslint-disable-line no-param-reassign
 					game.sounds.play('teleport');
+					game.mainCharacter.health.add(1); // otherwise we'll end up back here
 					game.transition('explore');
 				}, 5000);
 			},
@@ -67555,6 +67576,7 @@
 		isDinosaur: true,
 		wandering: true,
 		size: 60,
+		damageRange: 60,
 		heightSizeOffset: 0,
 		// color: [randColor(), randColor(), randColor()],
 		walkForce: 900 * defaultMass,
@@ -67971,7 +67993,7 @@
 		forward: 0,
 		back: PI$1, // Or -PI
 		left: HALF_PI$1,
-		right: -HALF_PI$1,
+		right: -HALF_PI$1, // FIXME: Tried PI + HALF_PI, but that also gives issues
 	};
 
 	window.Speaker = Speaker;
@@ -68112,6 +68134,19 @@
 			return dead;
 		}
 
+		checkEncounter(t) {
+			const { mainCharacter, actors } = this;
+			const damagingActors = actors.filter((actor) => {
+				const dist = ArrayCoords.getDistance(mainCharacter.coords, actor.coords);
+				const inDamageRange = dist <= actor.damageRange;
+				return (!actor.isCharacter && inDamageRange);
+			});
+			damagingActors.forEach((actor) => {
+				const dmg = actor.getDamage() * (t / 1000);
+				mainCharacter.health.subtract(dmg);
+			});
+		}
+
 		gameTick(t) {
 			super.gameTick(t);
 
@@ -68140,6 +68175,9 @@
 			// Update actors
 			actors.forEach((actor) => actor.update(t, this.world, this));
 			actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
+
+			this.checkEncounter(t);
+
 			return { terrainChunks };
 		}
 
@@ -68251,7 +68289,7 @@
 			ITEMS.forEach((itemData) => {
 				this.addNewItem(itemData);
 			});
-			this.addNewTrees(30);
+			this.addNewTrees(32);
 			this.items.forEach((item) => {
 				if (item.rooted) {
 					this.setHeightToTerrain(item, this.world);
