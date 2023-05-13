@@ -1,4 +1,4 @@
-import { ArrayCoords, Random, TAU, PI, Pool } from 'rocket-utility-belt';
+import { ArrayCoords, Random, TAU, PI, Pool } from 'rocket-boots';
 import Entity from './Entity.js';
 
 const CLOSE_ENOUGH = 100; // 2m

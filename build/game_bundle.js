@@ -1,13 +1,48 @@
 var game_bundle = (function () {
 	'use strict';
 
-	// eslint-disable-next-line no-nested-ternary
-	const clamp$2 = (v, min = 0, max = 1) => (v < min ? min : v > max ? max : v);
+	// Radian math
 
 	const { PI: PI$1 } = Math;
 	const TAU$1 = PI$1 * 2;
 	const HALF_PI$1 = PI$1 / 2;
 	const DEGREES_PER_RADIAN = (180 / PI$1);
+	const CARDINAL_FACING_RADIANS = Object.freeze([0, PI$1 * 0.5, PI$1, PI$1 * 1.5]);
+
+	function averageTwoAngles(angle1Param, angle2Param) {
+		let angle1 = angle1Param;
+		let angle2 = angle2Param;
+		const diff = Math.abs(angle1 - angle2);
+		if (diff > PI$1) {
+			if (angle1 < angle2) {
+				angle1 += 2 * PI$1;
+			} else {
+				angle2 += 2 * PI$1;
+			}
+		}
+		return (angle1 + angle2) / 2;
+	}
+
+	function averageAngles(...args) {
+		let angles = [];
+		if (args.length === 1) angles = args[0]; // eslint-disable-line prefer-destructuring
+		else if (args.length === 2) averageTwoAngles(args[0], args[1]);
+		else if (args.length > 2) angles = args;
+		else return 0;
+		if (angles.length < 1) return 0;
+		let x = 0;
+		let y = 0;
+		for (let i = 0; i < angles.length; i += 1) {
+			x += Math.cos(angles[i]);
+			y += Math.sin(angles[i]);
+		}
+		const avgAngle = Math.atan2(y / angles.length, x / angles.length);
+		// TODO: Is % TWO_PI necessary?
+		return (avgAngle >= 0) ? avgAngle : avgAngle + 2 * PI$1;
+	}
+
+	// eslint-disable-next-line no-nested-ternary
+	const clamp$1 = (v, min = 0, max = 1) => (v < min ? min : v > max ? max : v);
 
 	// Constants
 	const NORTH = 0;
@@ -19,7 +54,6 @@ var game_bundle = (function () {
 	const Z$2 = 2;
 	const DIRECTION_NAMES = Object.freeze(['North', 'East', 'South', 'West']);
 	const DIRECTIONS = Object.freeze([NORTH, EAST, SOUTH, WEST]);
-	const FACING_RADIANS = Object.freeze([0, PI$1 * 0.5, PI$1, PI$1 * 1.5]);
 
 	//       /^\ -y North
 	// West   |
@@ -53,7 +87,7 @@ var game_bundle = (function () {
 
 		static getDirectionRadians(facingParam) {
 			const facing = ArrayCoords.normalizeDirection(facingParam);
-			return FACING_RADIANS[facing];
+			return CARDINAL_FACING_RADIANS[facing];
 		}
 
 		static getDistance(coords1, coords2) {
@@ -62,6 +96,25 @@ var game_bundle = (function () {
 				+ (coords2[Y$2] - coords1[Y$2]) ** 2
 				+ (coords2[Z$2] - coords1[Z$2]) ** 2,
 			);
+		}
+
+		static magnitude(coords) {
+			return Math.sqrt((coords[X$2] ** 2) + (coords[Y$2] ** 2) + (coords[Z$2] ** 2));
+		}
+
+		/** Alias for magnitude, aka. getLength */
+		static getMagnitude(coords) {
+			return Math.sqrt((coords[X$2] ** 2) + (coords[Y$2] ** 2) + (coords[Z$2] ** 2));
+		}
+
+		static normalize(coords) {
+			const len = ArrayCoords.getMagnitude(coords);
+			if (len === 0) return [0, 0, 0];
+			return ArrayCoords.multiply(coords, 1 / len);
+		}
+
+		static dotProduct(coords1, coords2) {
+			return coords1[X$2] * coords2[X$2] + coords1[Y$2] * coords2[Y$2] + coords1[Z$2] * coords2[Z$2];
 		}
 
 		/**
@@ -86,19 +139,26 @@ var game_bundle = (function () {
 			return [coords1[X$2] + coords2[X$2], coords1[Y$2] + coords2[Y$2], coords1[Z$2] + coords2[Z$2]];
 		}
 
-		static multiply(coords, m) {
+		/** Multiplies coordinates by either a number or another set of coordinates */
+		static multiply(coords, param2) {
+			if (typeof param2 === 'number') return ArrayCoords.scale(coords, param2);
+			if (!(param2 instanceof Array)) throw new Error('bad params');
 			return [
-				coords[X$2] * m,
-				coords[Y$2] * m,
-				coords[Z$2] * m,
+				coords[X$2] * param2[X$2],
+				coords[Y$2] * param2[Y$2],
+				coords[Z$2] * param2[Z$2],
 			];
+		}
+
+		static scale(coords, m) {
+			return [coords[X$2] * m, coords[Y$2] * m, coords[Z$2] * m];
 		}
 
 		static clampEachCoord(coords, min, max) {
 			return [
-				clamp$2(coords[X$2], min, max),
-				clamp$2(coords[Y$2], min, max),
-				clamp$2(coords[Z$2], min, max),
+				clamp$1(coords[X$2], min, max),
+				clamp$1(coords[Y$2], min, max),
+				clamp$1(coords[Z$2], min, max),
 			];
 		}
 
@@ -146,208 +206,6 @@ var game_bundle = (function () {
 	ArrayCoords.SOUTH = SOUTH;
 	ArrayCoords.WEST = WEST;
 	ArrayCoords.DIRECTIONS = DIRECTIONS;
-
-	class Pool {
-		constructor(max = 0, value = undefined) {
-			this.max = max;
-			this.min = 0;
-			this.value = (typeof value === 'undefined') ? max : value;
-			if (typeof this.max !== 'number' || typeof this.value !== 'number') {
-				throw new Error('Need numbers for max and value');
-			}
-			this.lastDelta = 0; // track the last change for display purposes
-		}
-
-		get() {
-			return this.value;
-		}
-
-		set(v) {
-			if (typeof v !== 'number') throw new Error('Cannot set to a non-number');
-			const ogValue = this.value;
-			this.value = Math.max(Math.min(this.max, v), this.min);
-			this.lastDelta += this.value - ogValue;
-			return this.value;
-		}
-
-		getText() {
-			return `${this.value} / ${this.max}`;
-		}
-
-		add(n = 0) {
-			if (n < 0) return -1 * this.subtract(-n);
-			const maxToAdd = Math.min(this.max - this.value, n);
-			this.set(this.value + maxToAdd);
-			return maxToAdd;
-		}
-
-		subtract(n = 0) {
-			if (n < 0) return -1 * this.add(-n);
-			const maxToSubtract = Math.min(this.value, n);
-			this.set(this.value - maxToSubtract);
-			return maxToSubtract;
-		}
-
-		belowMax() { return this.value < this.max; }
-
-		atMax() { return this.value === this.max; }
-
-		atMin() { return this.value === this.min; }
-
-		aboveMin() { return this.value > this.min; }
-
-		clearLastDelta() {
-			this.lastDelta = 0;
-		}
-	}
-
-	const MAGIC_NUMBER = 10000;
-	const SEED_MAGIC_INT = 9999999;
-	const SEED_MAGIC_BOOL_TRUE = 93759;
-	const SEED_MAGIC_BOOL_FALSE = 1012638;
-	const RADIX$1 = 36;
-
-	class PseudoRandomizer {
-		constructor(seed) {
-			if (typeof seed === 'number') {
-				this.seed = seed;
-			} else if (seed instanceof Array) {
-				this.seed = PseudoRandomizer.makeSeed(seed);
-			} else {
-				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
-			}
-			if (Number.isNaN(this.seed)) {
-				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
-			}
-			this.initialSeed = this.seed;
-		}
-
-		static convertStringToRadixSafeString(str = '') {
-			return String(str).split('').map((char) => {
-				const int = parseInt(char, RADIX$1);
-				return (Number.isNaN(int)) ? char.charCodeAt(0).toString(RADIX$1) : char;
-			}).join('');
-		}
-
-		static convertStringToNumber(str = '') {
-			return parseInt(PseudoRandomizer.convertStringToRadixSafeString(str), RADIX$1);
-		}
-
-		static makeSeed(arr = []) {
-			const seed = arr.reduce((sum, value) => {
-				const typeOfValue = typeof value;
-				let num = 1;
-				if (typeOfValue === 'number') {
-					num = value;
-				} else if (typeOfValue === 'object') {
-					num = parseInt(JSON.stringify(value), RADIX$1);
-				} else if (typeOfValue === 'string') {
-					num = parseInt(value, RADIX$1);
-				} else if (typeOfValue === 'boolean') {
-					num = (value ? SEED_MAGIC_BOOL_TRUE : SEED_MAGIC_BOOL_FALSE);
-				}
-				return PseudoRandomizer.getPseudoRandInt(sum, SEED_MAGIC_INT) + num;
-			}, 0);
-			return seed;
-		}
-
-		static getPseudoRand(seed) {
-			// http://stackoverflow.com/a/19303725/1766230
-			const x = Math.sin(seed) * MAGIC_NUMBER;
-			return x - Math.floor(x);
-		}
-
-		static getPseudoRandInt(seed, n) {
-			const r = PseudoRandomizer.getPseudoRand(seed);
-			return Math.floor(r * n);
-		}
-
-		makeArray(length = 1) {
-			const arr = [];
-			for (let i = 0; i < length; i += 1) {
-				arr.push(this.random());
-			}
-			return arr;
-		}
-
-		random(n) {
-			this.seed += 1;
-			const r = PseudoRandomizer.getPseudoRand(this.seed);
-			if (typeof n === 'number') return Math.floor(r * n);
-			return r;
-		}
-
-		getSeedString() {
-			return this.seed.toString(RADIX$1);
-		}
-
-		reset() {
-			this.seed = this.initialSeed;
-		}
-	}
-
-	const MAGIC = 999999;
-	const RADIX = 36;
-
-	class Random {
-		constructor(n = 1) {
-			this.n = Math.random() * n;
-		}
-
-		get() {
-			return this.n;
-		}
-
-		static get() {
-			return Math.random();
-		}
-
-		static random() {
-			return Math.random();
-		}
-
-		static randomInt(n = 0) {
-			return Math.floor(Math.random() * n);
-		}
-
-		static randomBell(n = 1) {
-			return (Math.random() * n) - (Math.random() * n);
-		}
-
-		/** @returns a random # of radians between 0 and 2 PI */
-		static randomAngle() {
-			return Math.random() * Math.PI * 2;
-		}
-
-		static pickRandom(arr = []) {
-			return arr[Random.randomInt(arr.length)];
-		}
-
-		static randomString(n = MAGIC) {
-			return Math.round(Math.random() * n).toString(RADIX);
-		}
-
-		static uniqueString() {
-			return Number(new Date()).toString(RADIX) + Random.randomString();
-		}
-
-		// alias
-		static pick(arr = []) {
-			return arr[Random.randomInt(arr.length)];
-		}
-
-		/**
-		 * Chance of random event based on 0-1 odds
-		 * @param {Number} odds - float 0-1 for chance of true
-		 * @returns Boolean
-		 */
-		static chance(odds = 0) {
-			return Math.random() > odds;
-		}
-	}
-
-	// eslint-disable-next-line no-nested-ternary
-	const clamp$1 = (v, min = 0, max = 1) => (v < min ? min : v > max ? max : v);
 
 	const NOOP = () => {};
 
@@ -469,6 +327,40 @@ var game_bundle = (function () {
 		}
 	};
 
+	function getFrictionVelocity(vel, frictionAmountParam = 0.01, movement = false) {
+		// Calculate the friction force vector. The friction force is proportional
+		// to the velocity vector and acts in the opposite direction.
+		const frictionAmount = clamp$1(frictionAmountParam, 0, 1);
+		const frictionVel = ArrayCoords.scale(vel, -1 * frictionAmount);
+		// If we're not moving then just apply all the friction
+		if (!movement || !ArrayCoords.magnitude(movement)) {
+			return frictionVel;
+		}
+		// Normalize the vectors to get a unit vector in the direction of movement and friction.
+		const moveNormal = ArrayCoords.normalize(movement);
+		const frictionNormal = ArrayCoords.normalize(frictionVel);
+		let frictionMag = ArrayCoords.magnitude(frictionVel);
+		// Calculate the dot product of the friction and the movement vectors. The dot product
+		// of two vectors gives you the projection of one vector onto the other. In this case,
+		// we want to find the component of the friction vector that is in the direction of
+		// the movement.
+		const fDotM = ArrayCoords.dotProduct(frictionNormal, moveNormal);
+		const frictionPercent = (fDotM + 1) / 2;
+		frictionMag *= frictionPercent;
+		const finalFriction = ArrayCoords.scale(frictionNormal, frictionMag);
+		return finalFriction;
+	}
+
+	function applyFrictionToVelocity(vel, frictionAmount = 0.01, movement = false) {
+		const frictionVel = getFrictionVelocity(vel, frictionAmount, movement);
+		return ArrayCoords.add(vel, frictionVel);
+	}
+
+	function getAccelerationDueToForce(netForceCoords, mass = 0) {
+		if (!mass) return [0, 0, 0];
+		return ArrayCoords.scale(netForceCoords, (1 / mass));
+	}
+
 	class PointerLocker extends Observer$1 {
 		constructor(options = {}) {
 			super();
@@ -570,6 +462,205 @@ var game_bundle = (function () {
 			return this;
 		}
 	}
+
+	class Pool {
+		constructor(max = 0, value = undefined) {
+			this.max = max;
+			this.min = 0;
+			this.value = (typeof value === 'undefined') ? max : value;
+			if (typeof this.max !== 'number' || typeof this.value !== 'number') {
+				throw new Error('Need numbers for max and value');
+			}
+			this.lastDelta = 0; // track the last change for display purposes
+		}
+
+		get() {
+			return this.value;
+		}
+
+		set(v) {
+			if (typeof v !== 'number') throw new Error('Cannot set to a non-number');
+			const ogValue = this.value;
+			this.value = Math.max(Math.min(this.max, v), this.min);
+			this.lastDelta += this.value - ogValue;
+			return this.value;
+		}
+
+		getText() {
+			return `${this.value} / ${this.max}`;
+		}
+
+		add(n = 0) {
+			if (n < 0) return -1 * this.subtract(-n);
+			const maxToAdd = Math.min(this.max - this.value, n);
+			this.set(this.value + maxToAdd);
+			return maxToAdd;
+		}
+
+		subtract(n = 0) {
+			if (n < 0) return -1 * this.add(-n);
+			const maxToSubtract = Math.min(this.value, n);
+			this.set(this.value - maxToSubtract);
+			return maxToSubtract;
+		}
+
+		belowMax() { return this.value < this.max; }
+
+		atMax() { return this.value === this.max; }
+
+		atMin() { return this.value === this.min; }
+
+		aboveMin() { return this.value > this.min; }
+
+		clearLastDelta() {
+			this.lastDelta = 0;
+		}
+	}
+
+	const MAGIC_NUMBER = 10000;
+	const SEED_MAGIC_INT = 9999999;
+	const SEED_MAGIC_BOOL_TRUE = 93759;
+	const SEED_MAGIC_BOOL_FALSE = 1012638;
+	const RADIX$2 = 36;
+
+	class PseudoRandomizer {
+		constructor(seed) {
+			if (typeof seed === 'number') {
+				this.seed = seed;
+			} else if (seed instanceof Array) {
+				this.seed = PseudoRandomizer.makeSeed(seed);
+			} else {
+				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
+			}
+			if (Number.isNaN(this.seed)) {
+				this.seed = Math.round(Math.random() * SEED_MAGIC_INT);
+			}
+			this.initialSeed = this.seed;
+		}
+
+		static convertStringToRadixSafeString(str = '') {
+			return String(str).split('').map((char) => {
+				const int = parseInt(char, RADIX$2);
+				return (Number.isNaN(int)) ? char.charCodeAt(0).toString(RADIX$2) : char;
+			}).join('');
+		}
+
+		static convertStringToNumber(str = '') {
+			return parseInt(PseudoRandomizer.convertStringToRadixSafeString(str), RADIX$2);
+		}
+
+		static makeSeed(arr = []) {
+			const seed = arr.reduce((sum, value) => {
+				const typeOfValue = typeof value;
+				let num = 1;
+				if (typeOfValue === 'number') {
+					num = value;
+				} else if (typeOfValue === 'object') {
+					num = parseInt(JSON.stringify(value), RADIX$2);
+				} else if (typeOfValue === 'string') {
+					num = parseInt(value, RADIX$2);
+				} else if (typeOfValue === 'boolean') {
+					num = (value ? SEED_MAGIC_BOOL_TRUE : SEED_MAGIC_BOOL_FALSE);
+				}
+				return PseudoRandomizer.getPseudoRandInt(sum, SEED_MAGIC_INT) + num;
+			}, 0);
+			return seed;
+		}
+
+		static getPseudoRand(seed) {
+			// http://stackoverflow.com/a/19303725/1766230
+			const x = Math.sin(seed) * MAGIC_NUMBER;
+			return x - Math.floor(x);
+		}
+
+		static getPseudoRandInt(seed, n) {
+			const r = PseudoRandomizer.getPseudoRand(seed);
+			return Math.floor(r * n);
+		}
+
+		makeArray(length = 1) {
+			const arr = [];
+			for (let i = 0; i < length; i += 1) {
+				arr.push(this.random());
+			}
+			return arr;
+		}
+
+		random(n) {
+			this.seed += 1;
+			const r = PseudoRandomizer.getPseudoRand(this.seed);
+			if (typeof n === 'number') return Math.floor(r * n);
+			return r;
+		}
+
+		getSeedString() {
+			return this.seed.toString(RADIX$2);
+		}
+
+		reset() {
+			this.seed = this.initialSeed;
+		}
+	}
+
+	const MAGIC$1 = 999999;
+	const RADIX$1 = 36;
+
+	let Random$1 = class Random {
+		constructor(n = 1) {
+			this.n = Math.random() * n;
+		}
+
+		get() {
+			return this.n;
+		}
+
+		static get() {
+			return Math.random();
+		}
+
+		static random() {
+			return Math.random();
+		}
+
+		static randomInt(n = 0) {
+			return Math.floor(Math.random() * n);
+		}
+
+		static randomBell(n = 1) {
+			return (Math.random() * n) - (Math.random() * n);
+		}
+
+		/** @returns a random # of radians between 0 and 2 PI */
+		static randomAngle() {
+			return Math.random() * Math.PI * 2;
+		}
+
+		static pickRandom(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		static randomString(n = MAGIC$1) {
+			return Math.round(Math.random() * n).toString(RADIX$1);
+		}
+
+		static uniqueString() {
+			return Number(new Date()).toString(RADIX$1) + Random.randomString();
+		}
+
+		// alias
+		static pick(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		/**
+		 * Chance of random event based on 0-1 odds
+		 * @param {Number} odds - float 0-1 for chance of true
+		 * @returns Boolean
+		 */
+		static chance(odds = 0) {
+			return Math.random() > odds;
+		}
+	};
 
 	// const VOICE_RATES = [0.5, 1, 1, 1, 1.5, 1.75];
 	// const VOICE_PITCHES = [0.1, 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1, 1, 1.5, 2];
@@ -1582,7 +1673,7 @@ var game_bundle = (function () {
 
 	}
 
-	function normalize$1( value, array ) {
+	function normalize( value, array ) {
 
 		switch ( array.constructor ) {
 
@@ -1637,7 +1728,7 @@ var game_bundle = (function () {
 		ceilPowerOfTwo: ceilPowerOfTwo,
 		floorPowerOfTwo: floorPowerOfTwo,
 		setQuaternionFromProperEuler: setQuaternionFromProperEuler,
-		normalize: normalize$1,
+		normalize: normalize,
 		denormalize: denormalize
 	};
 
@@ -10798,7 +10889,7 @@ var game_bundle = (function () {
 
 		setX( index, x ) {
 
-			if ( this.normalized ) x = normalize$1( x, this.array );
+			if ( this.normalized ) x = normalize( x, this.array );
 
 			this.array[ index * this.itemSize ] = x;
 
@@ -10818,7 +10909,7 @@ var game_bundle = (function () {
 
 		setY( index, y ) {
 
-			if ( this.normalized ) y = normalize$1( y, this.array );
+			if ( this.normalized ) y = normalize( y, this.array );
 
 			this.array[ index * this.itemSize + 1 ] = y;
 
@@ -10838,7 +10929,7 @@ var game_bundle = (function () {
 
 		setZ( index, z ) {
 
-			if ( this.normalized ) z = normalize$1( z, this.array );
+			if ( this.normalized ) z = normalize( z, this.array );
 
 			this.array[ index * this.itemSize + 2 ] = z;
 
@@ -10858,7 +10949,7 @@ var game_bundle = (function () {
 
 		setW( index, w ) {
 
-			if ( this.normalized ) w = normalize$1( w, this.array );
+			if ( this.normalized ) w = normalize( w, this.array );
 
 			this.array[ index * this.itemSize + 3 ] = w;
 
@@ -10872,8 +10963,8 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
 
 			}
 
@@ -10890,9 +10981,9 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
-				z = normalize$1( z, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
+				z = normalize( z, this.array );
 
 			}
 
@@ -10910,10 +11001,10 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
-				z = normalize$1( z, this.array );
-				w = normalize$1( w, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
+				z = normalize( z, this.array );
+				w = normalize( w, this.array );
 
 			}
 
@@ -11077,7 +11168,7 @@ var game_bundle = (function () {
 
 		setX( index, x ) {
 
-			if ( this.normalized ) x = normalize$1( x, this.array );
+			if ( this.normalized ) x = normalize( x, this.array );
 
 			this.array[ index * this.itemSize ] = toHalfFloat( x );
 
@@ -11097,7 +11188,7 @@ var game_bundle = (function () {
 
 		setY( index, y ) {
 
-			if ( this.normalized ) y = normalize$1( y, this.array );
+			if ( this.normalized ) y = normalize( y, this.array );
 
 			this.array[ index * this.itemSize + 1 ] = toHalfFloat( y );
 
@@ -11117,7 +11208,7 @@ var game_bundle = (function () {
 
 		setZ( index, z ) {
 
-			if ( this.normalized ) z = normalize$1( z, this.array );
+			if ( this.normalized ) z = normalize( z, this.array );
 
 			this.array[ index * this.itemSize + 2 ] = toHalfFloat( z );
 
@@ -11137,7 +11228,7 @@ var game_bundle = (function () {
 
 		setW( index, w ) {
 
-			if ( this.normalized ) w = normalize$1( w, this.array );
+			if ( this.normalized ) w = normalize( w, this.array );
 
 			this.array[ index * this.itemSize + 3 ] = toHalfFloat( w );
 
@@ -11151,8 +11242,8 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
 
 			}
 
@@ -11169,9 +11260,9 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
-				z = normalize$1( z, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
+				z = normalize( z, this.array );
 
 			}
 
@@ -11189,10 +11280,10 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
-				z = normalize$1( z, this.array );
-				w = normalize$1( w, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
+				z = normalize( z, this.array );
+				w = normalize( w, this.array );
 
 			}
 
@@ -31179,7 +31270,7 @@ var game_bundle = (function () {
 
 		setX( index, x ) {
 
-			if ( this.normalized ) x = normalize$1( x, this.array );
+			if ( this.normalized ) x = normalize( x, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset ] = x;
 
@@ -31189,7 +31280,7 @@ var game_bundle = (function () {
 
 		setY( index, y ) {
 
-			if ( this.normalized ) y = normalize$1( y, this.array );
+			if ( this.normalized ) y = normalize( y, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset + 1 ] = y;
 
@@ -31199,7 +31290,7 @@ var game_bundle = (function () {
 
 		setZ( index, z ) {
 
-			if ( this.normalized ) z = normalize$1( z, this.array );
+			if ( this.normalized ) z = normalize( z, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset + 2 ] = z;
 
@@ -31209,7 +31300,7 @@ var game_bundle = (function () {
 
 		setW( index, w ) {
 
-			if ( this.normalized ) w = normalize$1( w, this.array );
+			if ( this.normalized ) w = normalize( w, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset + 3 ] = w;
 
@@ -31263,8 +31354,8 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
 
 			}
 
@@ -31281,9 +31372,9 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
-				z = normalize$1( z, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
+				z = normalize( z, this.array );
 
 			}
 
@@ -31301,10 +31392,10 @@ var game_bundle = (function () {
 
 			if ( this.normalized ) {
 
-				x = normalize$1( x, this.array );
-				y = normalize$1( y, this.array );
-				z = normalize$1( z, this.array );
-				w = normalize$1( w, this.array );
+				x = normalize( x, this.array );
+				y = normalize( y, this.array );
+				z = normalize( z, this.array );
+				w = normalize( w, this.array );
 
 			}
 
@@ -56811,6 +56902,7 @@ var game_bundle = (function () {
 	Licensed under MIT. https://github.com/101arrowz/fflate/blob/master/LICENSE
 	version 0.6.9
 	*/
+
 	var durl = function (c) { return URL.createObjectURL(new Blob([c], { type: 'text/javascript' })); };
 	try {
 	    URL.revokeObjectURL(durl(''));
@@ -61994,6 +62086,7 @@ var game_bundle = (function () {
 
 	/* eslint-disable class-methods-use-this */
 
+
 	// import noise from 'noise-esm';
 
 	window.THREE = THREE;
@@ -62088,7 +62181,7 @@ var game_bundle = (function () {
 			const intensity = this.sunLightBaseIntensity + (
 				Math.sin(this.sunLightAngle + HALF_PI$1) * intensityDelta
 			);
-			return clamp$2(intensity, 0, 1);
+			return clamp$1(intensity, 0, 1);
 		}
 
 		setDirLightByAngle(angle) {
@@ -65725,6 +65818,66 @@ var game_bundle = (function () {
 		})(); 
 	} (howler));
 
+	const MAGIC = 999999;
+	const RADIX = 36;
+
+	class Random {
+		constructor(n = 1) {
+			this.n = Math.random() * n;
+		}
+
+		get() {
+			return this.n;
+		}
+
+		static get() {
+			return Math.random();
+		}
+
+		static random() {
+			return Math.random();
+		}
+
+		static randomInt(n = 0) {
+			return Math.floor(Math.random() * n);
+		}
+
+		static randomBell(n = 1) {
+			return (Math.random() * n) - (Math.random() * n);
+		}
+
+		/** @returns a random # of radians between 0 and 2 PI */
+		static randomAngle() {
+			return Math.random() * Math.PI * 2;
+		}
+
+		static pickRandom(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		static randomString(n = MAGIC) {
+			return Math.round(Math.random() * n).toString(RADIX);
+		}
+
+		static uniqueString() {
+			return Number(new Date()).toString(RADIX) + Random.randomString();
+		}
+
+		// alias
+		static pick(arr = []) {
+			return arr[Random.randomInt(arr.length)];
+		}
+
+		/**
+		 * Chance of random event based on 0-1 odds
+		 * @param {Number} odds - float 0-1 for chance of true
+		 * @returns Boolean
+		 */
+		static chance(odds = 0) {
+			return Math.random() > odds;
+		}
+	}
+
 	class SoundController {
 		/**
 		 * @param {*} soundsListing - an object containing keys of sound names and values of
@@ -65918,68 +66071,9 @@ var game_bundle = (function () {
 
 	const { X: X$1, Y: Y$1, Z: Z$1 } = ArrayCoords;
 
-	// const X = 0, Y = 1, Z = 2;
-
-	/** aka. getLength */
-	function getMagnitude(coords) {
-		return Math.sqrt((coords[X$1] ** 2) + (coords[Y$1] ** 2) + (coords[Z$1] ** 2));
-	}
-
-	function normalize(coords) {
-		const len = getMagnitude(coords);
-		if (len === 0) return [0, 0, 0];
-		return ArrayCoords.multiply(coords, 1 / len);
-	}
-
-	function dotProduct(coords1, coords2) {
-		return coords1[X$1] * coords2[X$1] + coords1[Y$1] * coords2[Y$1] + coords1[Z$1] * coords2[Z$1];
-	}
-
-	function scale(coords, m) {
-		return [coords[X$1] * m, coords[Y$1] * m, coords[Z$1] * m];
-	}
-
-	function vectorAdd(coords1, coords2) {
-		return [coords1[X$1] + coords2[X$1], coords1[Y$1] + coords2[Y$1], coords1[Z$1] + coords2[Z$1]];
-	}
-
-	function getFrictionVelocity(vel, frictionAmountParam = 0.01, movement = false) {
-		// Calculate the friction force vector. The friction force is proportional
-		// to the velocity vector and acts in the opposite direction.
-		const frictionAmount = clamp$2(frictionAmountParam, 0, 1);
-		const frictionVel = scale(vel, -1 * frictionAmount);
-		// If we're not moving then just apply all the friction
-		if (!movement || !getMagnitude(movement)) {
-			return frictionVel;
-		}
-		// Normalize the movement vector to get a unit vector in the direction of movement.
-		const moveNormal = normalize(movement);
-		const frictionNormal = normalize(frictionVel);
-		let frictionMag = getMagnitude(frictionVel);
-		// Calculate the dot product of the friction and the movement vectors. The dot product
-		// of two vectors gives you the projection of one vector onto the other. In this case,
-		// we want to find the component of the friction vector that is in the direction of
-		// the movement.
-		const fDotM = dotProduct(frictionNormal, moveNormal);
-		const frictionPercent = (fDotM + 1) / 2;
-		frictionMag *= frictionPercent;
-		const finalFriction = scale(frictionNormal, frictionMag);
-		return finalFriction;
-	}
-
-	function applyFrictionToVelocity(vel, frictionAmount = 0.01, movement = false) {
-		const frictionVel = getFrictionVelocity(vel, frictionAmount, movement);
-		return vectorAdd(vel, frictionVel);
-	}
-
-	window.getFrictionVelocity = getFrictionVelocity;
-	window.applyFrictionToVelocity = applyFrictionToVelocity;
-	window.dotProduct = dotProduct;
-	window.getMagnitude = getMagnitude;
-
 	class Entity {
 		constructor(properties = {}) {
-			this.entityId = Random.uniqueString();
+			this.entityId = Random$1.uniqueString();
 			this.isEntity = true;
 			this.coords = [0, 0, 0];
 			this.facing = 0; // radians - 0 --> along the x axis
@@ -66139,9 +66233,7 @@ var game_bundle = (function () {
 
 		applyForce(force = []) {
 			if (!this.mass) return;
-			const accDueToForce = ArrayCoords.multiply(force, (1 / this.mass));
-			this.acc = ArrayCoords.add(this.acc, accDueToForce);
-			// if (this.isCharacter) console.log(JSON.stringify(this.acc));
+			this.acc = ArrayCoords.add(this.acc, getAccelerationDueToForce(force, this.mass));
 		}
 
 		applyImpulse(t, directedForcePerSecond = [0, 0, 0]) {
@@ -66287,7 +66379,7 @@ var game_bundle = (function () {
 			// Clamp the value to 100 ms so that it doesn't go overboard if the
 			// animation doesn't run in a long time
 			this.lastDeltaT = deltaT; // just for debug/tracking purposes
-			const t = clamp$2(deltaT, 0, 100);
+			const t = clamp$1(deltaT, 0, 100);
 			const gameTickData = this.gameTick(t);
 			const renderData = this.assembleRenderData(gameTickData);
 			this.render(renderData, t);
@@ -66302,8 +66394,8 @@ var game_bundle = (function () {
 		}
 
 		makePlayer() {
-			const playerId = Random.uniqueString();
-			const spiritId = Random.uniqueString();
+			const playerId = Random$1.uniqueString();
+			const spiritId = Random$1.uniqueString();
 			const player = { playerId }; // TODO: give a uid
 			const spirit = { spiritId, playerId }; // TODO: give a uid and link to player uid
 			return { player, spirit };
@@ -66342,7 +66434,7 @@ var game_bundle = (function () {
 		makeItem(itemData = {}) {
 			const item = new this.ItemClass(itemData);
 			if (item.randomAtRadius) {
-				const angle = Random.randomAngle();
+				const angle = Random$1.randomAngle();
 				const [x, y] = ArrayCoords.polarToCartesian(Number(item.randomAtRadius), angle);
 				item.coords = [x, y, 0];
 			}
@@ -66824,12 +66916,12 @@ var game_bundle = (function () {
 			let h = 100;
 			// Add big heights
 			h += DinoWorld.calcNoiseHeight(x, y, 0.0002, 800);
-			h = clamp$2(h, minHeight, maxHeight);
+			h = clamp$1(h, minHeight, maxHeight);
 			// Pokey mountains
 			h += DinoWorld.calcNoiseHeight(x, y, 0.002, 600);
 			// const roll = DinoWorld.calcNoiseHeight(x, y, 0.00015, 1);
 			// if (roll)
-			h = clamp$2(h, minHeight, maxHeight);
+			h = clamp$1(h, minHeight, maxHeight);
 
 			// Add roughness
 			const roughness = (h <= 2) ? 20 : 50 * (h / maxHeight);
@@ -66839,7 +66931,7 @@ var game_bundle = (function () {
 			h -= 20 * (
 				1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0))
 			);
-			h = clamp$2(h, minHeight, maxHeight);
+			h = clamp$1(h, minHeight, maxHeight);
 			// h += DinoWorld.calcNoiseHeight(x, y, 0.00021, 200);
 			// this.validateNumbers({ h, h2 });
 			return h;
@@ -66894,9 +66986,9 @@ var game_bundle = (function () {
 			const stepSize = this.chunkSize / 256;
 			const data = new Uint8Array(width * height * 4);
 			const setColor = (i, [r, g, b]) => {
-				data[i] = clamp$2(r, 0, 255);
-				data[i + 1] = clamp$2(g, 0, 255);
-				data[i + 2] = clamp$2(b, 0, 255);
+				data[i] = clamp$1(r, 0, 255);
+				data[i + 1] = clamp$1(g, 0, 255);
+				data[i + 2] = clamp$1(b, 0, 255);
 				data[i + 3] = 255;
 			};
 			for (let i = 0; i < data.length; i += 4) {
@@ -67074,7 +67166,7 @@ var game_bundle = (function () {
 		getDamage() {
 			const m = this.aggro ? 2 : 1;
 			this.animationName = 'attack'; // TODO: put this somewhere else
-			return (10 + Random.randomInt(10)) * m;
+			return (10 + Random$1.randomInt(10)) * m;
 		}
 
 		jump(t) {
@@ -67166,27 +67258,27 @@ var game_bundle = (function () {
 			}
 			// Plan based on distances
 			const { lookTargetDistance } = this;
-			if (lookTargetDistance < this.fleeDistance && Random.chance(0.8)) {
+			if (lookTargetDistance < this.fleeDistance && Random$1.chance(0.8)) {
 				const angleToThreat = ArrayCoords.getAngleFacing(this.coords, this.lookTargetEntity.coords);
 				const angleAway = (angleToThreat + PI$1) % TAU$1;
 				const moveTarget = ArrayCoords.polarToCartesian(this.fleeDistance, angleAway);
-				this.heatUp('planning', Random.randomInt(8));
+				this.heatUp('planning', Random$1.randomInt(8));
 				return { name: 'flee', moveTarget };
 			}
-			if (lookTargetDistance < this.huntDistance && Random.chance(0.8)) {
+			if (lookTargetDistance < this.huntDistance && Random$1.chance(0.8)) {
 				this.heatUp('planning', 1); // re-plan soon so we can follow
 				const moveTarget = [...this.lookTargetEntity.coords];
 				return { name: 'hunt', moveTarget, aggro: true };
 			}
-			if (lookTargetDistance < this.attentionDistance && Random.chance(0.5)) {
-				this.heatUp('planning', 2 + Random.randomInt(8));
+			if (lookTargetDistance < this.attentionDistance && Random$1.chance(0.5)) {
+				this.heatUp('planning', 2 + Random$1.randomInt(8));
 				return { name: 'watch', moveTarget: null };
 			}
 			if (this.wandering) {
-				const deltaX = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
-				const deltaY = Random.randomInt(this.maxWanderRange) - Random.randomInt(this.maxWanderRange);
+				const deltaX = Random$1.randomInt(this.maxWanderRange) - Random$1.randomInt(this.maxWanderRange);
+				const deltaY = Random$1.randomInt(this.maxWanderRange) - Random$1.randomInt(this.maxWanderRange);
 				const moveTarget = ArrayCoords.add(this.coords, [deltaX, deltaY, 0]);
-				this.heatUp('planning', 11 + Random.randomBell(10));
+				this.heatUp('planning', 11 + Random$1.randomBell(10));
 				return { name: 'wander', moveTarget };
 				// console.log(this.name, 'planning a wander');
 			}
@@ -67268,7 +67360,7 @@ var game_bundle = (function () {
 
 		getInteractionPercent() {
 			if (!this.interactionEffort) return 1;
-			return clamp$2(this.interactionProgress / this.interactionEffort);
+			return clamp$1(this.interactionProgress / this.interactionEffort);
 		}
 
 		interact(who, amount = 0) {
@@ -67973,17 +68065,6 @@ var game_bundle = (function () {
 		wandering: './audio/music/Chronosaurus_Wandering_Theme.mp3',
 	};
 
-	function averageAngles(angles = []) {
-		let x = 0;
-		let y = 0;
-		for (let i = 0; i < angles.length; i += 1) {
-			x += Math.cos(angles[i]);
-			y += Math.sin(angles[i]);
-		}
-		const avgAngle = Math.atan2(y / angles.length, x / angles.length);
-		return avgAngle >= 0 ? avgAngle : avgAngle + 2 * Math.PI;
-	}
-
 	const PART_SIZE = 20;
 	const PART = {
 		name: 'Time travel machine part',
@@ -68139,7 +68220,7 @@ var game_bundle = (function () {
 			this.despawnRadius = this.spawnRadii[1] * 1.5;
 			this.timeMachine = null;
 			this.headBop = 0.5;
-			this.testMode = true;
+			// this.testMode = true;
 			this.spawnDinos = true;
 		}
 
@@ -68152,7 +68233,6 @@ var game_bundle = (function () {
 			if (!angles.length) return;
 			const angle = averageAngles(angles);
 			const method = (sprint ? 'sprint' : 'walk');
-			console.log(angles, angle);
 			this.mainCharacter[method](t, angle);
 			if (this.mainCharacter.grounded) {
 				// this.sounds.play('footsteps', { random: 0.1 });
@@ -68358,8 +68438,8 @@ var game_bundle = (function () {
 
 		getRandomSpawnCoords() {
 			const [minRadius, maxRadius] = this.spawnRadii;
-			const r = minRadius + Random.randomInt(maxRadius - minRadius);
-			const angle = Random.randomAngle();
+			const r = minRadius + Random$1.randomInt(maxRadius - minRadius);
+			const angle = Random$1.randomAngle();
 			const [x, y] = ArrayCoords.polarToCartesian(r, angle);
 			return ArrayCoords.add(this.mainCharacter.coords, [x, y, 0]);
 		}
@@ -68369,7 +68449,7 @@ var game_bundle = (function () {
 			const [distance] = this.findNearestActor(coords);
 			if (distance < this.spawnActorDistance) return null;
 			// const randColor = () => (0.5 + (Random.random() * 0.5));
-			const dinoKey = Random.pick(Object.keys(dinos));
+			const dinoKey = Random$1.pick(Object.keys(dinos));
 			const dinoOpt = dinos[dinoKey];
 			const dino = this.addNewActor(dinoOpt);
 			dino.coords = coords;
@@ -68385,7 +68465,7 @@ var game_bundle = (function () {
 			const coords = this.getRandomSpawnCoords();
 			this.addNewItem({
 				isTree: true,
-				color: Random.pick(['#76c379', '#508d76']),
+				color: Random$1.pick(['#76c379', '#508d76']),
 				renderAs: 'model',
 				model: 'royalPalm',
 				coords,

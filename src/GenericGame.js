@@ -1,6 +1,5 @@
 /* eslint-disable class-methods-use-this */
-import { StateCommander, MouseWheelWatcher, Looper } from 'rocket-boots';
-import { Random, ArrayCoords, clamp } from 'rocket-utility-belt';
+import { StateCommander, MouseWheelWatcher, Looper, Random, ArrayCoords, clamp } from 'rocket-boots';
 import { SoundController } from 'sound-controller';
 
 import Entity from './Entity.js';

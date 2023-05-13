@@ -1,65 +1,6 @@
-import { Random, ArrayCoords, clamp } from 'rocket-utility-belt';
+import { ArrayCoords, Random, applyFrictionToVelocity, getAccelerationDueToForce } from 'rocket-boots';
 
 const { X, Y, Z } = ArrayCoords;
-
-// const X = 0, Y = 1, Z = 2;
-
-/** aka. getLength */
-function getMagnitude(coords) {
-	return Math.sqrt((coords[X] ** 2) + (coords[Y] ** 2) + (coords[Z] ** 2));
-}
-
-function normalize(coords) {
-	const len = getMagnitude(coords);
-	if (len === 0) return [0, 0, 0];
-	return ArrayCoords.multiply(coords, 1 / len);
-}
-
-function dotProduct(coords1, coords2) {
-	return coords1[X] * coords2[X] + coords1[Y] * coords2[Y] + coords1[Z] * coords2[Z];
-}
-
-function scale(coords, m) {
-	return [coords[X] * m, coords[Y] * m, coords[Z] * m];
-}
-
-function vectorAdd(coords1, coords2) {
-	return [coords1[X] + coords2[X], coords1[Y] + coords2[Y], coords1[Z] + coords2[Z]];
-}
-
-function getFrictionVelocity(vel, frictionAmountParam = 0.01, movement = false) {
-	// Calculate the friction force vector. The friction force is proportional
-	// to the velocity vector and acts in the opposite direction.
-	const frictionAmount = clamp(frictionAmountParam, 0, 1);
-	const frictionVel = scale(vel, -1 * frictionAmount);
-	// If we're not moving then just apply all the friction
-	if (!movement || !getMagnitude(movement)) {
-		return frictionVel;
-	}
-	// Normalize the movement vector to get a unit vector in the direction of movement.
-	const moveNormal = normalize(movement);
-	const frictionNormal = normalize(frictionVel);
-	let frictionMag = getMagnitude(frictionVel);
-	// Calculate the dot product of the friction and the movement vectors. The dot product
-	// of two vectors gives you the projection of one vector onto the other. In this case,
-	// we want to find the component of the friction vector that is in the direction of
-	// the movement.
-	const fDotM = dotProduct(frictionNormal, moveNormal);
-	const frictionPercent = (fDotM + 1) / 2;
-	frictionMag *= frictionPercent;
-	const finalFriction = scale(frictionNormal, frictionMag);
-	return finalFriction;
-}
-
-function applyFrictionToVelocity(vel, frictionAmount = 0.01, movement = false) {
-	const frictionVel = getFrictionVelocity(vel, frictionAmount, movement);
-	return vectorAdd(vel, frictionVel);
-}
-
-window.getFrictionVelocity = getFrictionVelocity;
-window.applyFrictionToVelocity = applyFrictionToVelocity;
-window.dotProduct = dotProduct;
-window.getMagnitude = getMagnitude;
 
 class Entity {
 	constructor(properties = {}) {
@@ -223,9 +164,7 @@ class Entity {
 
 	applyForce(force = []) {
 		if (!this.mass) return;
-		const accDueToForce = ArrayCoords.multiply(force, (1 / this.mass));
-		this.acc = ArrayCoords.add(this.acc, accDueToForce);
-		// if (this.isCharacter) console.log(JSON.stringify(this.acc));
+		this.acc = ArrayCoords.add(this.acc, getAccelerationDueToForce(force, this.mass));
 	}
 
 	applyImpulse(t, directedForcePerSecond = [0, 0, 0]) {

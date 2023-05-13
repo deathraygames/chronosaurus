@@ -1,5 +1,4 @@
-import { ArrayCoords, Random, HALF_PI, PI, TAU, TWO_PI } from 'rocket-utility-belt';
-import { Speaker, PointerLocker } from 'rocket-boots';
+import { ArrayCoords, Speaker, PointerLocker, averageAngles, Random, HALF_PI, PI, TAU } from 'rocket-boots';
 
 import DinoScene from './DinoScene.js';
 import GenericGame from './GenericGame.js';
@@ -12,17 +11,6 @@ import models from './models.js';
 import states from './states.js';
 import dinos from './dinos.js';
 import { sounds, music } from './soundsAndMusic.js';
-
-function averageAngles(angles = []) {
-	let x = 0;
-	let y = 0;
-	for (let i = 0; i < angles.length; i += 1) {
-		x += Math.cos(angles[i]);
-		y += Math.sin(angles[i]);
-	}
-	const avgAngle = Math.atan2(y / angles.length, x / angles.length);
-	return avgAngle >= 0 ? avgAngle : avgAngle + 2 * Math.PI;
-}
 
 const PART_SIZE = 20;
 const PART = {
@@ -179,7 +167,7 @@ class DinoGame extends GenericGame {
 		this.despawnRadius = this.spawnRadii[1] * 1.5;
 		this.timeMachine = null;
 		this.headBop = 0.5;
-		this.testMode = true;
+		// this.testMode = true;
 		this.spawnDinos = true;
 	}
 
@@ -192,7 +180,6 @@ class DinoGame extends GenericGame {
 		if (!angles.length) return;
 		const angle = averageAngles(angles);
 		const method = (sprint ? 'sprint' : 'walk');
-		console.log(angles, angle);
 		this.mainCharacter[method](t, angle);
 		if (this.mainCharacter.grounded) {
 			// this.sounds.play('footsteps', { random: 0.1 });

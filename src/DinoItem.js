@@ -1,4 +1,4 @@
-import { ArrayCoords, clamp } from 'rocket-utility-belt';
+import { ArrayCoords, clamp } from 'rocket-boots';
 
 import Entity from './Entity.js';
 

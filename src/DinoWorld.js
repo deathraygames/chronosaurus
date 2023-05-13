@@ -1,5 +1,5 @@
 /* eslint-disable class-methods-use-this */
-import { PseudoRandomizer, ArrayCoords, clamp } from 'rocket-utility-belt';
+import { PseudoRandomizer, ArrayCoords, clamp } from 'rocket-boots';
 import noise from 'noise-esm';
 
 const { X, Y } = ArrayCoords;

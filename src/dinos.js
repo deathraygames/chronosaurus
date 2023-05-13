@@ -1,4 +1,4 @@
-import { TAU } from 'rocket-utility-belt';
+import { TAU } from 'rocket-boots';
 
 const defaultMass = 10000;
 
