@@ -1,6 +1,65 @@
-import { Random, ArrayCoords } from 'rocket-utility-belt';
+import { Random, ArrayCoords, clamp } from 'rocket-utility-belt';
 
 const { X, Y, Z } = ArrayCoords;
+
+// const X = 0, Y = 1, Z = 2;
+
+/** aka. getLength */
+function getMagnitude(coords) {
+	return Math.sqrt((coords[X] ** 2) + (coords[Y] ** 2) + (coords[Z] ** 2));
+}
+
+function normalize(coords) {
+	const len = getMagnitude(coords);
+	if (len === 0) return [0, 0, 0];
+	return ArrayCoords.multiply(coords, 1 / len);
+}
+
+function dotProduct(coords1, coords2) {
+	return coords1[X] * coords2[X] + coords1[Y] * coords2[Y] + coords1[Z] * coords2[Z];
+}
+
+function scale(coords, m) {
+	return [coords[X] * m, coords[Y] * m, coords[Z] * m];
+}
+
+function vectorAdd(coords1, coords2) {
+	return [coords1[X] + coords2[X], coords1[Y] + coords2[Y], coords1[Z] + coords2[Z]];
+}
+
+function getFrictionVelocity(vel, frictionAmountParam = 0.01, movement = false) {
+	// Calculate the friction force vector. The friction force is proportional
+	// to the velocity vector and acts in the opposite direction.
+	const frictionAmount = clamp(frictionAmountParam, 0, 1);
+	const frictionVel = scale(vel, -1 * frictionAmount);
+	// If we're not moving then just apply all the friction
+	if (!movement || !getMagnitude(movement)) {
+		return frictionVel;
+	}
+	// Normalize the movement vector to get a unit vector in the direction of movement.
+	const moveNormal = normalize(movement);
+	const frictionNormal = normalize(frictionVel);
+	let frictionMag = getMagnitude(frictionVel);
+	// Calculate the dot product of the friction and the movement vectors. The dot product
+	// of two vectors gives you the projection of one vector onto the other. In this case,
+	// we want to find the component of the friction vector that is in the direction of
+	// the movement.
+	const fDotM = dotProduct(frictionNormal, moveNormal);
+	const frictionPercent = (fDotM + 1) / 2;
+	frictionMag *= frictionPercent;
+	const finalFriction = scale(frictionNormal, frictionMag);
+	return finalFriction;
+}
+
+function applyFrictionToVelocity(vel, frictionAmount = 0.01, movement = false) {
+	const frictionVel = getFrictionVelocity(vel, frictionAmount, movement);
+	return vectorAdd(vel, frictionVel);
+}
+
+window.getFrictionVelocity = getFrictionVelocity;
+window.applyFrictionToVelocity = applyFrictionToVelocity;
+window.dotProduct = dotProduct;
+window.getMagnitude = getMagnitude;
 
 class Entity {
 	constructor(properties = {}) {
@@ -12,10 +71,12 @@ class Entity {
 		// Negative radians are turning right (clockwise)
 		this.lookAt = [0, 0, 0]; // Calculated value
 		this.vel = [0, 0, 0];
+		this.frictionVel = [0, 0, 0];
 		this.acc = [0, 0, 0];
 		// Good to stop velocity from skyrocketing
 		this.maxVelocity = 600;
-		this.movementForce = 0; // track movement force just to know when entity is moving on its own
+		// track movement force know when entity is moving on its own and adjust friction
+		this.movementForce = 0;
 		this.tags = [];
 		this.renderAs = 'box';
 		this.color = 0xffffff;
@@ -171,7 +232,7 @@ class Entity {
 		const seconds = t / 1000;
 		const impulseForce = ArrayCoords.multiply(directedForcePerSecond, seconds);
 		this.applyForce(impulseForce);
-		this.movementForce = true;
+		this.movementForce = impulseForce;
 	}
 
 	// For walking on the x, y plane
@@ -190,9 +251,9 @@ class Entity {
 		const seconds = t / 1000;
 		const {
 			gravity = [0, 0, -80],
-			// Lower friction --> slows down velocity more
-			groundFriction = 0.92,
-			airFriction = 0.9999,
+			// Friction velocity magnitude percentages per millisecond
+			groundFriction = 0.005,
+			airFriction = 0.0001,
 			accelerationDecay = 0.9,
 		} = options;
 		// Acceleration due to gravity
@@ -208,10 +269,10 @@ class Entity {
 		// this.acc = [0, 0, 0];
 		/// ...but let's try to make it last a little longer?
 		this.acc = ArrayCoords.multiply(this.acc, accelerationDecay);
-		// Friction
-		let friction = groundFriction; // (this.grounded) ? groundFriction : airFriction;
-		if (this.movementForce) friction = airFriction; // no friction if moving/walking
-		this.vel = ArrayCoords.multiply(this.vel, friction);
+		// Apply friction (as a velocity) - TODO: apply as a force for more realistic physics
+		const friction = ((this.grounded) ? groundFriction : airFriction) * t;
+		this.vel = applyFrictionToVelocity(this.vel, friction, this.movementForce);
+		// Round down to zero to stop unnecessary calculations approaching zero
 		this.vel = [
 			(Math.abs(this.vel[X]) < 0.001) ? 0 : this.vel[X],
 			(Math.abs(this.vel[Y]) < 0.001) ? 0 : this.vel[Y],

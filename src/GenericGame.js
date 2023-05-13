@@ -1,11 +1,9 @@
 /* eslint-disable class-methods-use-this */
-import MouseWheelWatcher from 'rocket-boots-three-toolbox/src/MouseWheelWatcher.js';
+import { StateCommander, MouseWheelWatcher, Looper } from 'rocket-boots';
 import { Random, ArrayCoords, clamp } from 'rocket-utility-belt';
 import { SoundController } from 'sound-controller';
 
 import Entity from './Entity.js';
-import Looper from './Looper.js';
-import StateCommander from './StateCommander.js';
 
 const { PI } = Math;
 const TAU = PI * 2;
@@ -49,7 +47,7 @@ class GenericGame extends StateCommander {
 		this.items = [];
 		this.tick = 0;
 		this.worldTime = startWorldTime || START_WORLD_TIME; // In seconds
-		this.worldTimePerGameTime = 200;
+		this.worldTimePerGameTime = 100; // originally 200
 	}
 
 	render(renderData = {}, t = 5) {

@@ -33,6 +33,7 @@ export default [
 		output: {
 			file: './build/game_bundle.js',
 			format: 'iife',
+			name: 'game_bundle',
 		},
 		plugins,
 		external,

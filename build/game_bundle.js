@@ -1,4 +1,4 @@
-(function () {
+var game_bundle = (function () {
 	'use strict';
 
 	// eslint-disable-next-line no-nested-ternary
@@ -346,6 +346,431 @@
 		}
 	}
 
+	// eslint-disable-next-line no-nested-ternary
+	const clamp$1 = (v, min = 0, max = 1) => (v < min ? min : v > max ? max : v);
+
+	const NOOP = () => {};
+
+	class Looper {
+		constructor(a) {
+			this.loopHook = (typeof a === 'function') ? a : NOOP;
+			this.lastTime = performance.now();
+			this.isStopped = true;
+		}
+
+		set(fn) {
+			this.loopHook = fn;
+			return this;
+		}
+
+		next() {
+			if (this.isStopped) return;
+			const now = performance.now();
+			const t = now - this.lastTime;
+			this.lastTime = now;
+			this.loopHook(t);
+			requestAnimationFrame(() => this.next());
+		}
+
+		start() {
+			this.isStopped = false;
+			this.lastTime = performance.now();
+			this.next();
+			return this;
+		}
+
+		stop() {
+			this.isStopped = true;
+		}
+	}
+
+	const WHEEL_PX = 25;
+	const WHEEL_EVENT = 'wheel';
+
+	class MouseWheelWatcher {
+		constructor({ y = 0, watch = true, min = -1000, max = 1000 } = {}) {
+			this.y = y;
+			this.min = min;
+			this.max = max;
+			this.lastMouseWheelDeltaY = 0;
+			this.listener = () => {};
+			if (watch) this.watch();
+		}
+
+		get mouseWheel() {
+			return this.lastMouseWheelDeltaY;
+		}
+
+		set mouseWheel(n) {
+			this.lastMouseWheelDeltaY = n;
+			this.y = clamp$1(this.y + n, this.min, this.max);
+		}
+
+		get percent() { return this.getPercent(); }
+
+		set percent(n) { // eslint-disable-line class-methods-use-this
+			throw new Error('cannot set percent');
+		}
+
+		getPercent() {
+			const d = (this.y > 0) ? this.max : this.min * -1;
+			return (d === 0) ? 0 : this.y / d;
+		}
+
+		watch() {
+			const listener = (e) => {
+				if (e.ctrlKey) return;
+				this.mouseWheel = e.deltaY / WHEEL_PX;
+			};
+			this.listener = listener;
+			window.addEventListener(WHEEL_EVENT, listener);
+		}
+
+		unwatch() {
+			window.removeEventListener(WHEEL_EVENT, this.listener);
+		}
+
+		clear() {
+			this.mouseWheel = 0;
+		}
+
+		update() {
+			this.clear();
+		}
+	}
+
+	let Observer$1 = class Observer {
+		constructor() {
+			this.eventListeners = {};
+		}
+
+		/** Add event, analogous to `addEventListener` and jQuery's `on` */
+		on(eventTypeName, listener) {
+			let eventListenerSet = this.eventListeners[eventTypeName];
+			if (!eventListenerSet) {
+				this.eventListeners[eventTypeName] = new Set();
+				eventListenerSet = this.eventListeners[eventTypeName];
+			}
+			eventListenerSet.add(listener);
+		}
+
+		/** Remove event, analogous to `removeEventListener` and jQuery's `off` */
+		off(eventTypeName, listener) {
+			const eventListenerSet = this.eventListeners[eventTypeName];
+			if (!eventListenerSet) return;
+			eventListenerSet.delete(listener);
+		}
+
+		/** Trigger an event */
+		trigger(eventTypeName, data) {
+			const eventListenerSet = this.eventListeners[eventTypeName];
+			if (!eventListenerSet) return;
+			eventListenerSet.forEach((listener) => listener(data));
+		}
+	};
+
+	class PointerLocker extends Observer$1 {
+		constructor(options = {}) {
+			super();
+			this.selector = options.selector || 'canvas';
+			this.unlockEventName = options.unlockEventName || 'mousedown'; // contextmenu, click
+			this.lockEventName = options.lockEventName || 'mousedown'; // or click
+			this.clickTypes = ['click', 'mouseup', 'mousedown'];
+			this.lockButton = 1;
+			this.unlockButton = 1;
+			this.handleLockedMouseMove = (event) => {
+				const x = event.movementX;
+				const y = event.movementY;
+				this.trigger('lockedMouseMove', { x, y });
+				// console.log({ x, y });
+			};
+			this.handleLock = async (event) => {
+				// console.log('handleLock', event);
+				if (this.clickTypes.includes(event.type)) {
+					if (event.which !== this.lockButton) return;
+				}
+				// console.log('Preventing default, then locking');
+				event.preventDefault();
+				event.stopPropagation();
+				await this.lock();
+			};
+			this.handleLockUnlock = async (event) => {
+				// console.log('handleLockUnlock - isLocked?', this.isLocked());
+				if (this.isLocked()) {
+					await this.handleUnlock(event);
+					return;
+				}
+				await this.handleLock(event);
+			};
+			this.handleUnlock = async (event) => {
+				// console.log('handleUnlock', event);
+				if (this.clickTypes.includes(event.type)) {
+					if (event.which !== this.unlockButton) return;
+				}
+				// console.log('Preventing default, then locking');
+				event.preventDefault();
+				event.stopPropagation();
+				await this.unlock();
+			};
+			this.doc = window.document;
+			if (this.getElement()) this.setup();
+		}
+
+		static warn(...args) {
+			console.warn(...args); // eslint-disable-line no-console
+		}
+
+		getElement() {
+			return this.doc.querySelector(this.selector);
+		}
+
+		isLocked() {
+			return Boolean(this.doc.pointerLockElement);
+		}
+
+		async toggleLock() {
+			const methodName = (this.isLocked()) ? 'unlock' : 'lock';
+			await this[methodName]();
+		}
+
+		async lock() {
+			if (this.doc.pointerLockElement) {
+				this.warn('already locked');
+				return;
+			}
+			await this.getElement().requestPointerLock();
+		}
+
+		async unlock() {
+			const elt = this.getElement();
+			if (this.doc.pointerLockElement !== elt) {
+				this.warn('pointerLockElement is not element we expected. Cannot unlock.', this.doc.pointerLockElement);
+				return;
+			}
+			await document.exitPointerLock();
+		}
+
+		setup(setupOptions = {}) {
+			if (setupOptions.selector) this.selector = setupOptions.selector;
+			// TODO: Also allow configuring other properties (like in constructor)
+			const elt = this.getElement();
+			this.doc.addEventListener('pointerlockchange', () => {
+				if (this.doc.pointerLockElement === elt) {
+					this.doc.addEventListener('mousemove', this.handleLockedMouseMove, false);
+				} else {
+					this.doc.removeEventListener('mousemove', this.handleLockedMouseMove, false);
+				}
+			});
+			if (this.unlockEventName === this.lockEventName) {
+				elt.addEventListener(this.lockEventName, this.handleLockUnlock, false);
+			} else {
+				elt.addEventListener(this.unlockEventName, this.handleUnlock, false);
+				elt.addEventListener(this.lockEventName, this.handleLock, false);
+			}
+			return this;
+		}
+	}
+
+	// const VOICE_RATES = [0.5, 1, 1, 1, 1.5, 1.75];
+	// const VOICE_PITCHES = [0.1, 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1, 1, 1.5, 2];
+	const VOICE_NAMES = {
+		David: 'Microsoft David - English (United States)',
+		Mark: 'Microsoft Mark - English (United States)',
+		Zira: 'Microsoft Zira - English (United States)',
+		Olivia: 'Google US English', // Female
+		Lily: 'Google UK English Female',
+		Jack: 'Google UK English Male',
+	};
+
+	class Speaker {
+		constructor(options = {}) {
+			const {
+				rate = 1,
+				pitch = 1,
+				voice = 0,
+			} = options;
+			// Dependencies
+			this.setTimeout = window.setTimeout;
+			this.speechSynthesis = window.speechSynthesis;
+			this.SpeechSynthesisUtterance = window.SpeechSynthesisUtterance;
+			// Properties
+			this.voiceList = [];
+			this.voice = Speaker.findVoice(voice);
+			this.rate = rate;
+			this.pitch = pitch;
+			// TODO: Is there a better way to set this up?
+			this.speechSynthesis.onvoiceschanged = () => {
+				this.voice = Speaker.findVoice(voice);
+			};
+		}
+
+		static warn(...args) {
+			console.warn(...args); // eslint-disable-line no-console
+		}
+
+		static findVoice(param, synth = window.speechSynthesis) {
+			if (typeof param === 'string') {
+				return Speaker.findVoiceByName(param, synth);
+			}
+			if (typeof param === 'number') {
+				return Speaker.getVoiceByIndex(param, synth);
+			}
+			if (typeof param === 'object') {
+				// Assume that this is a SpeechSynthesisVoice object
+				// TODO: Maybe allow a voiceParam that's a non-SpeechSynthesisVoice object
+				// to allow looking up of voices by gender, language, etc.
+				return param;
+			}
+			Speaker.warn('Could not find voice', param, 'so using default of first voice');
+			return Speaker.getVoiceByIndex(0, synth);
+		}
+
+		/**
+		 * Find a voice by name
+		 * @param {String} name - Can be the long name of the voice or a short, abbreviated name
+		 * @param {Object} synth - window.speechSynthesis
+		 * @returns SpeechSynthesisVoice
+		 */
+		static findVoiceByName(name, synth = window.speechSynthesis) {
+			const allVoices = Speaker.getVoices(synth);
+			const found = allVoices.find((voice) => (voice.name === name));
+			if (found) return found;
+			const longName = VOICE_NAMES[name];
+			if (!longName) return undefined;
+			return allVoices.find((voice) => (voice.name === longName));
+		}
+
+		/**
+		 * Get all voices that are offered
+		 * @param {speechSynthesis} synth
+		 * @returns SpeechSynthesisVoice
+		 */
+		static getVoices(synth = window.speechSynthesis) {
+			// TODO: Make this async and wait for onvoiceschanged?
+			return synth.getVoices();
+		}
+
+		static getEnglishVoices(synth = window.speechSynthesis) {
+			return Speaker.getVoices(synth).filter((voice) => (voice.lang.substring(0, 1) === 'en'));
+		}
+
+		static getVoiceByIndex(i, synth = window.speechSynthesis) {
+			const voices = Speaker.getVoices(synth);
+			return voices[i];
+		}
+
+		static computerSpeak(text, synth = window.speechSynthesis) {
+			synth.cancel();
+			Speaker.speak(text, 0, 0.3, 1.5);
+		}
+
+		static getSilenceTag(silenceMs = 0) {
+			// NOTE: This only seems to work with David and Mark
+			return `<silence msec="${Number(silenceMs)}" />`;
+		}
+
+		static joinArray(array = []) {
+			return array.map((item) => {
+				if (typeof item === 'string') return item;
+				if (typeof item === 'number') return Speaker.getSilenceTag(item);
+				if (typeof item === 'object') return Speaker.getSilenceTag(item.silence);
+				return '';
+			}).join(' ');
+		}
+
+		static speak(
+			textParam = '',
+			voiceParam = 0,
+			pitch = 1,
+			rate = 1,
+			silence = 0,
+			SpeechSynthesisUtterance = window.SpeechSynthesisUtterance,
+			synth = window.speechSynthesis,
+		) {
+			// Based on Oxygen Levels Critical, which in turn is based on
+			// an example from https://mdn.github.io/web-speech-api/speak-easy-synthesis/
+			let text = String(textParam);
+			if (silence) text = Speaker.getSilenceTag(silence) + text;
+			const utterance = new SpeechSynthesisUtterance(text);
+			const voice = Speaker.findVoice(voiceParam, synth);
+			utterance.voice = voice;
+			utterance.pitch = pitch;
+			utterance.rate = rate;
+			// utterance.onpause = (event) => {
+			// console.log('Speech paused', event);
+			// const char = event.utterance.text.charAt(event.charIndex);
+			// };
+			synth.speak(utterance);
+		}
+
+		speakText(text) {
+			this.speechSynthesis.cancel();
+			Speaker.speak(
+				text,
+				this.voice,
+				this.pitch,
+				this.rate,
+				0,
+				this.SpeechSynthesisUtterance,
+				this.speechSynthesis,
+			);
+			return this;
+		}
+
+		speak(param, param2) {
+			if (typeof param === 'string') {
+				return this.speak({ text: param, ...param2 });
+			}
+			if (typeof param !== 'object') {
+				return this.speakText(String(param));
+			}
+			if (param instanceof Array) {
+				const text = Speaker.joinArray(param);
+				return this.speak({ text, ...param2 });
+			}
+			const {
+				text = '',
+				silence = 0,
+				cancel = true,
+			} = param;
+			if (cancel) this.speechSynthesis.cancel();
+			Speaker.speak(
+				text,
+				this.voice,
+				this.pitch,
+				this.rate,
+				silence,
+				this.SpeechSynthesisUtterance,
+				this.speechSynthesis,
+			);
+			return this;
+		}
+
+		cancel() {
+			this.speechSynthesis.cancel();
+			return this;
+		}
+
+		wait(t = 0) {
+			return new Promise((resolve) => {
+				this.setTimeout(resolve, t);
+			});
+		}
+
+		pause(/* t = Infinity */) {
+			this.speechSynthesis.pause();
+			// if (t !== Infinity) {
+			// this.setTimeout(() => this.resume(), t);
+			// }
+			return this;
+		}
+
+		resume() {
+			this.speechSynthesis.resume();
+			return this;
+		}
+	}
+
 	class Observer {
 		constructor() {
 			this.eventListeners = {};
@@ -534,101 +959,88 @@
 		}
 	}
 
-	class PointerLocker extends Observer {
+	// TODO: Copy functionality from
+	//  https://github.com/rocket-boots/rocket-boots/blob/master/scripts/rocketboots/StateMachine.js
+
+	class StateCommander extends Observer$1 {
 		constructor(options = {}) {
 			super();
-			this.selector = options.selector || 'canvas';
-			this.unlockEventName = options.unlockEventName || 'mousedown'; // contextmenu, click
-			this.lockEventName = options.lockEventName || 'mousedown'; // or click
-			this.clickTypes = ['click', 'mouseup', 'mousedown'];
-			this.lockButton = 1;
-			this.unlockButton = 1;
-			this.handleLockedMouseMove = (event) => {
-				const x = event.movementX;
-				const y = event.movementY;
-				this.trigger('lockedMouseMove', { x, y });
-				// console.log({ x, y });
-			};
-			this.handleLock = async (event) => {
-				// console.log('handleLock', event);
-				if (this.clickTypes.includes(event.type)) {
-					if (event.which !== this.lockButton) return;
-				}
-				// console.log('Preventing default, then locking');
-				event.preventDefault();
-				event.stopPropagation();
-				await this.lock();
-			};
-			this.handleLockUnlock = async (event) => {
-				// console.log('handleLockUnlock - isLocked?', this.isLocked());
-				if (this.isLocked()) {
-					await this.handleUnlock(event);
-					return;
-				}
-				await this.handleLock(event);
-			};
-			this.handleUnlock = async (event) => {
-				// console.log('handleUnlock', event);
-				if (this.clickTypes.includes(event.type)) {
-					if (event.which !== this.unlockButton) return;
-				}
-				// console.log('Preventing default, then locking');
-				event.preventDefault();
-				event.stopPropagation();
-				await this.unlock();
-			};
-			this.doc = window.document;
-			if (this.getElement()) this.setup();
+			this.allowUndefinedStates = false;
+			this.currentState = null;
+			this.states = (typeof options.states === 'object' && options.states) ? { ...options.states } : {};
+			this.kbCommander = new KeyboardCommander();
+			this.commandListener = (c) => this.handleCommand(c);
+			this.missingListener = (c) => console.log('>', c, '< (missing)'); // eslint-disable-line no-console
+			this.setupKeyboardCommander();
 		}
 
-		getElement() {
-			return this.doc.querySelector(this.selector);
+		removeKeyboardCommander() {
+			this.kbCommander.off('command', this.commandListener);
+			this.kbCommander.off('missingCommand', this.missingListener);
+			this.kbCommander.unmount();
 		}
 
-		isLocked() {
-			return Boolean(this.doc.pointerLockElement);
+		setupKeyboardCommander() {
+			this.removeKeyboardCommander();
+			this.kbCommander.mount();
+			this.kbCommander.on('command', this.commandListener);
+			this.kbCommander.on('missingCommand', this.missingListener);
 		}
 
-		async toggleLock() {
-			const methodName = (this.isLocked()) ? 'unlock' : 'lock';
-			await this[methodName]();
+		warn(...args) { console.warn(...args); } // eslint-disable-line class-methods-use-this, no-console
+
+		getState(stateName = this.currentState) {
+			return this.states[stateName];
 		}
 
-		async lock() {
-			if (this.doc.pointerLockElement) {
-				console.warn('already locked');
-				return;
+		setState(stateArg1, stateArg2) {
+			const name = (typeof stateArg1 === 'object' && stateArg1.name) ? stateArg1.name : stateArg1;
+			if (!name) throw new Error('Name is required for the state');
+			let stateObj = {};
+			if (typeof stateArg2 === 'object') stateObj = stateArg2;
+			else if (typeof stateArg1 === 'object') stateObj = stateArg1;
+			stateObj = { name, ...stateObj };
+			this.states[name] = stateObj;
+		}
+
+		async startState(stateName = this.currentState) {
+			const s = this.getState(stateName);
+			if (!s) throw new Error(`No state (${stateName}) found`);
+			this.currentState = stateName;
+			this.kbCommander.setMapping(s.keyboardMapping || s.kbMapping || s.kb || {});
+			if (typeof s.start === 'function') {
+				await s.start(this, stateName);
 			}
-			await this.getElement().requestPointerLock();
+			this.trigger('startState', stateName);
 		}
 
-		async unlock() {
-			const elt = this.getElement();
-			if (this.doc.pointerLockElement !== elt) {
-				console.warn('pointerLockElement is not element we expected. Cannot unlock.', this.doc.pointerLockElement);
-				return;
+		async stopState(stateName = this.currentState) {
+			if (stateName === null) return;
+			if (stateName === this.currentState) this.currentState = null;
+			else this.warn(`Stopping a state (${stateName}) that is not the current state.`);
+			const s = this.getState(stateName);
+			if (!s) throw new Error(`No state (${stateName}) found`);
+			this.kbCommander.setMapping({});
+			if (typeof s.stop === 'function') {
+				await s.stop(this, stateName);
 			}
-			await document.exitPointerLock();
+			this.trigger('stopState', stateName);
 		}
 
-		setup(setupOptions = {}) {
-			if (setupOptions.selector) this.selector = setupOptions.selector;
-			// TODO: Also allow configuring other properties (like in constructor)
-			const elt = this.getElement();
-			this.doc.addEventListener('pointerlockchange', () => {
-				if (this.doc.pointerLockElement === elt) {
-					this.doc.addEventListener('mousemove', this.handleLockedMouseMove, false);
+		async transition(newStateName) {
+			await this.stopState(this.currentState);
+			if (!this.states[newStateName]) {
+				if (this.allowUndefinedStates) {
+					this.states[newStateName] = {};
 				} else {
-					this.doc.removeEventListener('mousemove', this.handleLockedMouseMove, false);
+					throw new Error(`Unknown state ${newStateName}`);
 				}
-			});
-			if (this.unlockEventName === this.lockEventName) {
-				elt.addEventListener(this.lockEventName, this.handleLockUnlock, false);
-			} else {
-				elt.addEventListener(this.unlockEventName, this.handleUnlock, false);
-				elt.addEventListener(this.lockEventName, this.handleLock, false);
 			}
-			return this;
+			await this.startState(newStateName);
+		}
+
+		handleCommand(command) {
+			this.trigger('command', command);
 		}
 	}
 
@@ -934,7 +1346,7 @@
 
 	}
 
-	function clamp$1( value, min, max ) {
+	function clamp( value, min, max ) {
 
 		return Math.max( min, Math.min( max, value ) );
 
@@ -1170,7 +1582,7 @@
 
 	}
 
-	function normalize( value, array ) {
+	function normalize$1( value, array ) {
 
 		switch ( array.constructor ) {
 
@@ -1206,7 +1618,7 @@
 		DEG2RAD: DEG2RAD,
 		RAD2DEG: RAD2DEG,
 		generateUUID: generateUUID,
-		clamp: clamp$1,
+		clamp: clamp,
 		euclideanModulo: euclideanModulo,
 		mapLinear: mapLinear,
 		inverseLerp: inverseLerp,
@@ -1225,7 +1637,7 @@
 		ceilPowerOfTwo: ceilPowerOfTwo,
 		floorPowerOfTwo: floorPowerOfTwo,
 		setQuaternionFromProperEuler: setQuaternionFromProperEuler,
-		normalize: normalize,
+		normalize: normalize$1,
 		denormalize: denormalize
 	};
 
@@ -1594,7 +2006,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp$1( theta, - 1, 1 ) );
+			return Math.acos( clamp( theta, - 1, 1 ) );
 
 		}
 
@@ -4091,7 +4503,7 @@
 
 		angleTo( q ) {
 
-			return 2 * Math.acos( Math.abs( clamp$1( this.dot( q ), - 1, 1 ) ) );
+			return 2 * Math.acos( Math.abs( clamp( this.dot( q ), - 1, 1 ) ) );
 
 		}
 
@@ -4908,7 +5320,7 @@
 
 			// clamp, to handle numerical problems
 
-			return Math.acos( clamp$1( theta, - 1, 1 ) );
+			return Math.acos( clamp( theta, - 1, 1 ) );
 
 		}
 
@@ -7312,7 +7724,7 @@
 
 				case 'XYZ':
 
-					this._y = Math.asin( clamp$1( m13, - 1, 1 ) );
+					this._y = Math.asin( clamp( m13, - 1, 1 ) );
 
 					if ( Math.abs( m13 ) < 0.9999999 ) {
 
@@ -7330,7 +7742,7 @@
 
 				case 'YXZ':
 
-					this._x = Math.asin( - clamp$1( m23, - 1, 1 ) );
+					this._x = Math.asin( - clamp( m23, - 1, 1 ) );
 
 					if ( Math.abs( m23 ) < 0.9999999 ) {
 
@@ -7348,7 +7760,7 @@
 
 				case 'ZXY':
 
-					this._x = Math.asin( clamp$1( m32, - 1, 1 ) );
+					this._x = Math.asin( clamp( m32, - 1, 1 ) );
 
 					if ( Math.abs( m32 ) < 0.9999999 ) {
 
@@ -7366,7 +7778,7 @@
 
 				case 'ZYX':
 
-					this._y = Math.asin( - clamp$1( m31, - 1, 1 ) );
+					this._y = Math.asin( - clamp( m31, - 1, 1 ) );
 
 					if ( Math.abs( m31 ) < 0.9999999 ) {
 
@@ -7384,7 +7796,7 @@
 
 				case 'YZX':
 
-					this._z = Math.asin( clamp$1( m21, - 1, 1 ) );
+					this._z = Math.asin( clamp( m21, - 1, 1 ) );
 
 					if ( Math.abs( m21 ) < 0.9999999 ) {
 
@@ -7402,7 +7814,7 @@
 
 				case 'XZY':
 
-					this._z = Math.asin( - clamp$1( m12, - 1, 1 ) );
+					this._z = Math.asin( - clamp( m12, - 1, 1 ) );
 
 					if ( Math.abs( m12 ) < 0.9999999 ) {
 
@@ -9465,8 +9877,8 @@
 
 			// h,s,l ranges are in 0.0 - 1.0
 			h = euclideanModulo( h, 1 );
-			s = clamp$1( s, 0, 1 );
-			l = clamp$1( l, 0, 1 );
+			s = clamp( s, 0, 1 );
+			l = clamp( l, 0, 1 );
 
 			if ( s === 0 ) {
 
@@ -9690,7 +10102,7 @@
 
 			ColorManagement.fromWorkingColorSpace( _color.copy( this ), colorSpace );
 
-			return clamp$1( _color.r * 255, 0, 255 ) << 16 ^ clamp$1( _color.g * 255, 0, 255 ) << 8 ^ clamp$1( _color.b * 255, 0, 255 ) << 0;
+			return clamp( _color.r * 255, 0, 255 ) << 16 ^ clamp( _color.g * 255, 0, 255 ) << 8 ^ clamp( _color.b * 255, 0, 255 ) << 0;
 
 		}
 
@@ -10181,7 +10593,7 @@
 
 		if ( Math.abs( val ) > 65504 ) console.warn( 'THREE.DataUtils.toHalfFloat(): Value out of range.' );
 
-		val = clamp$1( val, - 65504, 65504 );
+		val = clamp( val, - 65504, 65504 );
 
 		_tables.floatView[ 0 ] = val;
 		const f = _tables.uint32View[ 0 ];
@@ -10386,7 +10798,7 @@
 
 		setX( index, x ) {
 
-			if ( this.normalized ) x = normalize( x, this.array );
+			if ( this.normalized ) x = normalize$1( x, this.array );
 
 			this.array[ index * this.itemSize ] = x;
 
@@ -10406,7 +10818,7 @@
 
 		setY( index, y ) {
 
-			if ( this.normalized ) y = normalize( y, this.array );
+			if ( this.normalized ) y = normalize$1( y, this.array );
 
 			this.array[ index * this.itemSize + 1 ] = y;
 
@@ -10426,7 +10838,7 @@
 
 		setZ( index, z ) {
 
-			if ( this.normalized ) z = normalize( z, this.array );
+			if ( this.normalized ) z = normalize$1( z, this.array );
 
 			this.array[ index * this.itemSize + 2 ] = z;
 
@@ -10446,7 +10858,7 @@
 
 		setW( index, w ) {
 
-			if ( this.normalized ) w = normalize( w, this.array );
+			if ( this.normalized ) w = normalize$1( w, this.array );
 
 			this.array[ index * this.itemSize + 3 ] = w;
 
@@ -10460,8 +10872,8 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
 
 			}
 
@@ -10478,9 +10890,9 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
-				z = normalize( z, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
+				z = normalize$1( z, this.array );
 
 			}
 
@@ -10498,10 +10910,10 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
-				z = normalize( z, this.array );
-				w = normalize( w, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
+				z = normalize$1( z, this.array );
+				w = normalize$1( w, this.array );
 
 			}
 
@@ -10665,7 +11077,7 @@
 
 		setX( index, x ) {
 
-			if ( this.normalized ) x = normalize( x, this.array );
+			if ( this.normalized ) x = normalize$1( x, this.array );
 
 			this.array[ index * this.itemSize ] = toHalfFloat( x );
 
@@ -10685,7 +11097,7 @@
 
 		setY( index, y ) {
 
-			if ( this.normalized ) y = normalize( y, this.array );
+			if ( this.normalized ) y = normalize$1( y, this.array );
 
 			this.array[ index * this.itemSize + 1 ] = toHalfFloat( y );
 
@@ -10705,7 +11117,7 @@
 
 		setZ( index, z ) {
 
-			if ( this.normalized ) z = normalize( z, this.array );
+			if ( this.normalized ) z = normalize$1( z, this.array );
 
 			this.array[ index * this.itemSize + 2 ] = toHalfFloat( z );
 
@@ -10725,7 +11137,7 @@
 
 		setW( index, w ) {
 
-			if ( this.normalized ) w = normalize( w, this.array );
+			if ( this.normalized ) w = normalize$1( w, this.array );
 
 			this.array[ index * this.itemSize + 3 ] = toHalfFloat( w );
 
@@ -10739,8 +11151,8 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
 
 			}
 
@@ -10757,9 +11169,9 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
-				z = normalize( z, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
+				z = normalize$1( z, this.array );
 
 			}
 
@@ -10777,10 +11189,10 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
-				z = normalize( z, this.array );
-				w = normalize( w, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
+				z = normalize$1( z, this.array );
+				w = normalize$1( w, this.array );
 
 			}
 
@@ -30767,7 +31179,7 @@
 
 		setX( index, x ) {
 
-			if ( this.normalized ) x = normalize( x, this.array );
+			if ( this.normalized ) x = normalize$1( x, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset ] = x;
 
@@ -30777,7 +31189,7 @@
 
 		setY( index, y ) {
 
-			if ( this.normalized ) y = normalize( y, this.array );
+			if ( this.normalized ) y = normalize$1( y, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset + 1 ] = y;
 
@@ -30787,7 +31199,7 @@
 
 		setZ( index, z ) {
 
-			if ( this.normalized ) z = normalize( z, this.array );
+			if ( this.normalized ) z = normalize$1( z, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset + 2 ] = z;
 
@@ -30797,7 +31209,7 @@
 
 		setW( index, w ) {
 
-			if ( this.normalized ) w = normalize( w, this.array );
+			if ( this.normalized ) w = normalize$1( w, this.array );
 
 			this.data.array[ index * this.data.stride + this.offset + 3 ] = w;
 
@@ -30851,8 +31263,8 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
 
 			}
 
@@ -30869,9 +31281,9 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
-				z = normalize( z, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
+				z = normalize$1( z, this.array );
 
 			}
 
@@ -30889,10 +31301,10 @@
 
 			if ( this.normalized ) {
 
-				x = normalize( x, this.array );
-				y = normalize( y, this.array );
-				z = normalize( z, this.array );
-				w = normalize( w, this.array );
+				x = normalize$1( x, this.array );
+				y = normalize$1( y, this.array );
+				z = normalize$1( z, this.array );
+				w = normalize$1( w, this.array );
 
 			}
 
@@ -33159,7 +33571,7 @@
 
 					vec.normalize();
 
-					const theta = Math.acos( clamp$1( tangents[ i - 1 ].dot( tangents[ i ] ), - 1, 1 ) ); // clamp for floating pt errors
+					const theta = Math.acos( clamp( tangents[ i - 1 ].dot( tangents[ i ] ), - 1, 1 ) ); // clamp for floating pt errors
 
 					normals[ i ].applyMatrix4( mat.makeRotationAxis( vec, theta ) );
 
@@ -33173,7 +33585,7 @@
 
 			if ( closed === true ) {
 
-				let theta = Math.acos( clamp$1( normals[ 0 ].dot( normals[ segments ] ), - 1, 1 ) );
+				let theta = Math.acos( clamp( normals[ 0 ].dot( normals[ segments ] ), - 1, 1 ) );
 				theta /= segments;
 
 				if ( tangents[ 0 ].dot( vec.crossVectors( normals[ 0 ], normals[ segments ] ) ) > 0 ) {
@@ -34752,7 +35164,7 @@
 
 			// clamp phiLength so it's in range of [ 0, 2PI ]
 
-			phiLength = clamp$1( phiLength, 0, Math.PI * 2 );
+			phiLength = clamp( phiLength, 0, Math.PI * 2 );
 
 			// buffers
 
@@ -39017,7 +39429,7 @@
 			Object.defineProperty( this, 'reflectivity', {
 				get: function () {
 
-					return ( clamp$1( 2.5 * ( this.ior - 1 ) / ( this.ior + 1 ), 0, 1 ) );
+					return ( clamp( 2.5 * ( this.ior - 1 ) / ( this.ior + 1 ), 0, 1 ) );
 
 				},
 				set: function ( reflectivity ) {
@@ -49342,7 +49754,7 @@
 			} else {
 
 				this.theta = Math.atan2( x, z );
-				this.phi = Math.acos( clamp$1( y / this.radius, - 1, 1 ) );
+				this.phi = Math.acos( clamp( y / this.radius, - 1, 1 ) );
 
 			}
 
@@ -49691,7 +50103,7 @@
 
 			if ( clampToLine ) {
 
-				t = clamp$1( t, 0, 1 );
+				t = clamp( t, 0, 1 );
 
 			}
 
@@ -62078,61 +62490,6 @@
 		}
 	}
 
-	// import { clamp } from 'three/src/math/mathutils.js';
-	const clamp = (v, min = 0, max = 1) => v < min ? min : v > max ? max : v;
-
-	const WHEEL_PX = 25;
-	const WHEEL_EVENT = 'wheel';
-
-	class MouseWheelWatcher {
-		constructor({ y = 0, watch = true, min = -1000, max = 1000 } = {}) {
-			this.y = y;
-			this.min = min;
-			this.max = max;
-			this.lastMouseWheelDeltaY = 0;
-			this.listener = () => {};
-			if (watch) this.watch();
-		}
-
-		get mouseWheel() {
-			return this.lastMouseWheelDeltaY;
-		}
-
-		set mouseWheel(n) {
-			this.lastMouseWheelDeltaY = n;
-			this.y = clamp(this.y + n, this.min, this.max);
-		}
-
-		get percent() { return this.getPercent(); }
-		set percent(n) { throw new Error('cannot set percent'); }
-
-		getPercent() {
-			const d = (this.y > 0) ? this.max : this.min * -1;
-			return (d === 0) ? 0 : this.y / d;
-		}
-
-		watch() {
-			const listener = (e) => {
-				if (e.ctrlKey) return;
-				this.mouseWheel = e.deltaY / WHEEL_PX;
-			};
-			this.listener = listener;
-			window.addEventListener(WHEEL_EVENT, listener);
-		}
-
-		unwatch() {
-			window.removeEventListener(WHEEL_EVENT, this.listener);
-		}
-
-		clear() {
-			this.mouseWheel = 0;
-		}
-
-		update() {
-			this.clear();
-		}
-	}
-
 	var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
 	var howler = {};
@@ -65561,6 +65918,65 @@
 
 	const { X: X$1, Y: Y$1, Z: Z$1 } = ArrayCoords;
 
+	// const X = 0, Y = 1, Z = 2;
+
+	/** aka. getLength */
+	function getMagnitude(coords) {
+		return Math.sqrt((coords[X$1] ** 2) + (coords[Y$1] ** 2) + (coords[Z$1] ** 2));
+	}
+
+	function normalize(coords) {
+		const len = getMagnitude(coords);
+		if (len === 0) return [0, 0, 0];
+		return ArrayCoords.multiply(coords, 1 / len);
+	}
+
+	function dotProduct(coords1, coords2) {
+		return coords1[X$1] * coords2[X$1] + coords1[Y$1] * coords2[Y$1] + coords1[Z$1] * coords2[Z$1];
+	}
+
+	function scale(coords, m) {
+		return [coords[X$1] * m, coords[Y$1] * m, coords[Z$1] * m];
+	}
+
+	function vectorAdd(coords1, coords2) {
+		return [coords1[X$1] + coords2[X$1], coords1[Y$1] + coords2[Y$1], coords1[Z$1] + coords2[Z$1]];
+	}
+
+	function getFrictionVelocity(vel, frictionAmountParam = 0.01, movement = false) {
+		// Calculate the friction force vector. The friction force is proportional
+		// to the velocity vector and acts in the opposite direction.
+		const frictionAmount = clamp$2(frictionAmountParam, 0, 1);
+		const frictionVel = scale(vel, -1 * frictionAmount);
+		// If we're not moving then just apply all the friction
+		if (!movement || !getMagnitude(movement)) {
+			return frictionVel;
+		}
+		// Normalize the movement vector to get a unit vector in the direction of movement.
+		const moveNormal = normalize(movement);
+		const frictionNormal = normalize(frictionVel);
+		let frictionMag = getMagnitude(frictionVel);
+		// Calculate the dot product of the friction and the movement vectors. The dot product
+		// of two vectors gives you the projection of one vector onto the other. In this case,
+		// we want to find the component of the friction vector that is in the direction of
+		// the movement.
+		const fDotM = dotProduct(frictionNormal, moveNormal);
+		const frictionPercent = (fDotM + 1) / 2;
+		frictionMag *= frictionPercent;
+		const finalFriction = scale(frictionNormal, frictionMag);
+		return finalFriction;
+	}
+
+	function applyFrictionToVelocity(vel, frictionAmount = 0.01, movement = false) {
+		const frictionVel = getFrictionVelocity(vel, frictionAmount, movement);
+		return vectorAdd(vel, frictionVel);
+	}
+
+	window.getFrictionVelocity = getFrictionVelocity;
+	window.applyFrictionToVelocity = applyFrictionToVelocity;
+	window.dotProduct = dotProduct;
+	window.getMagnitude = getMagnitude;
+
 	class Entity {
 		constructor(properties = {}) {
 			this.entityId = Random.uniqueString();
@@ -65571,10 +65987,12 @@
 			// Negative radians are turning right (clockwise)
 			this.lookAt = [0, 0, 0]; // Calculated value
 			this.vel = [0, 0, 0];
+			this.frictionVel = [0, 0, 0];
 			this.acc = [0, 0, 0];
 			// Good to stop velocity from skyrocketing
 			this.maxVelocity = 600;
-			this.movementForce = 0; // track movement force just to know when entity is moving on its own
+			// track movement force know when entity is moving on its own and adjust friction
+			this.movementForce = 0;
 			this.tags = [];
 			this.renderAs = 'box';
 			this.color = 0xffffff;
@@ -65730,7 +66148,7 @@
 			const seconds = t / 1000;
 			const impulseForce = ArrayCoords.multiply(directedForcePerSecond, seconds);
 			this.applyForce(impulseForce);
-			this.movementForce = true;
+			this.movementForce = impulseForce;
 		}
 
 		// For walking on the x, y plane
@@ -65749,9 +66167,9 @@
 			const seconds = t / 1000;
 			const {
 				gravity = [0, 0, -80],
-				// Lower friction --> slows down velocity more
-				groundFriction = 0.92,
-				airFriction = 0.9999,
+				// Friction velocity magnitude percentages per millisecond
+				groundFriction = 0.005,
+				airFriction = 0.0001,
 				accelerationDecay = 0.9,
 			} = options;
 			// Acceleration due to gravity
@@ -65767,10 +66185,10 @@
 			// this.acc = [0, 0, 0];
 			/// ...but let's try to make it last a little longer?
 			this.acc = ArrayCoords.multiply(this.acc, accelerationDecay);
-			// Friction
-			let friction = groundFriction; // (this.grounded) ? groundFriction : airFriction;
-			if (this.movementForce) friction = airFriction; // no friction if moving/walking
-			this.vel = ArrayCoords.multiply(this.vel, friction);
+			// Apply friction (as a velocity) - TODO: apply as a force for more realistic physics
+			const friction = ((this.grounded) ? groundFriction : airFriction) * t;
+			this.vel = applyFrictionToVelocity(this.vel, friction, this.movementForce);
+			// Round down to zero to stop unnecessary calculations approaching zero
 			this.vel = [
 				(Math.abs(this.vel[X$1]) < 0.001) ? 0 : this.vel[X$1],
 				(Math.abs(this.vel[Y$1]) < 0.001) ? 0 : this.vel[Y$1],
@@ -65783,126 +66201,6 @@
 		update(t) {
 			// this.updateTimers(t);
 			this.updatePhysics(t);
-		}
-	}
-
-	const NOOP = () => {};
-
-	class Looper {
-		constructor(a) {
-			this.loopHook = (typeof a === 'function') ? a : NOOP;
-			this.lastTime = performance.now();
-			this.isStopped = true;
-		}
-
-		set(fn) {
-			this.loopHook = fn;
-			return this;
-		}
-
-		next() {
-			if (this.isStopped) return;
-			const now = performance.now();
-			const t = now - this.lastTime;
-			this.lastTime = now;
-			this.loopHook(t);
-			requestAnimationFrame(() => this.next());
-		}
-
-		start() {
-			this.isStopped = false;
-			this.lastTime = performance.now();
-			this.next();
-			return this;
-		}
-
-		stop() {
-			this.isStopped = true;
-		}
-	}
-
-	// TODO: Copy functionality from
-	//  https://github.com/rocket-boots/rocket-boots/blob/master/scripts/rocketboots/StateMachine.js
-
-	class StateCommander extends Observer {
-		constructor(options = {}) {
-			super();
-			this.allowUndefinedStates = false;
-			this.currentState = null;
-			this.states = (typeof options.states === 'object' && options.states) ? { ...options.states } : {};
-			this.kbCommander = new KeyboardCommander();
-			this.commandListener = (c) => this.handleCommand(c);
-			this.missingListener = (c) => console.log('>', c, '< (missing)');
-			this.setupKeyboardCommander();
-		}
-
-		removeKeyboardCommander() {
-			this.kbCommander.off('command', this.commandListener);
-			this.kbCommander.off('missingCommand', this.missingListener);
-			this.kbCommander.unmount();
-		}
-
-		setupKeyboardCommander() {
-			this.removeKeyboardCommander();
-			this.kbCommander.mount();
-			this.kbCommander.on('command', this.commandListener);
-			this.kbCommander.on('missingCommand', this.missingListener);
-		}
-
-		warn(...args) { console.warn(...args); } // eslint-disable-line class-methods-use-this
-
-		getState(stateName = this.currentState) {
-			return this.states[stateName];
-		}
-
-		setState(stateArg1, stateArg2) {
-			const name = (typeof stateArg1 === 'object' && stateArg1.name) ? stateArg1.name : stateArg1;
-			if (!name) throw new Error('Name is required for the state');
-			let stateObj = {};
-			if (typeof stateArg2 === 'object') stateObj = stateArg2;
-			else if (typeof stateArg1 === 'object') stateObj = stateArg1;
-			stateObj = { name, ...stateObj };
-			this.states[name] = stateObj;
-		}
-
-		async startState(stateName = this.currentState) {
-			const s = this.getState(stateName);
-			if (!s) throw new Error(`No state (${stateName}) found`);
-			this.currentState = stateName;
-			this.kbCommander.setMapping(s.keyboardMapping || s.kbMapping || s.kb || {});
-			if (typeof s.start === 'function') {
-				await s.start(this, stateName);
-			}
-			this.trigger('startState', stateName);
-		}
-
-		async stopState(stateName = this.currentState) {
-			if (stateName === null) return;
-			if (stateName === this.currentState) this.currentState = null;
-			else this.warn(`Stopping a state (${stateName}) that is not the current state.`);
-			const s = this.getState(stateName);
-			if (!s) throw new Error(`No state (${stateName}) found`);
-			this.kbCommander.setMapping({});
-			if (typeof s.stop === 'function') {
-				await s.stop(this, stateName);
-			}
-			this.trigger('stopState', stateName);
-		}
-
-		async transition(newStateName) {
-			await this.stopState(this.currentState);
-			if (!this.states[newStateName]) {
-				if (this.allowUndefinedStates) {
-					this.states[newStateName] = {};
-				} else {
-					throw new Error(`Unknown state ${newStateName}`);
-				}
-			}
-			await this.startState(newStateName);
-		}
-
-		handleCommand(command) {
-			this.trigger('command', command);
 		}
 	}
 
@@ -65950,7 +66248,7 @@
 			this.items = [];
 			this.tick = 0;
 			this.worldTime = startWorldTime || START_WORLD_TIME; // In seconds
-			this.worldTimePerGameTime = 200;
+			this.worldTimePerGameTime = 100; // originally 200
 		}
 
 		render(renderData = {}, t = 5) {
@@ -67143,10 +67441,12 @@
 		updateDebug(debug, actor) {
 			const html = `
 			Last delta T: ${round(debug.lastDeltaT)}<br>
-			Vel: ${actor.vel.map((v) => round(v)).join('<br>')}<br>
-			Pos: ${actor.coords.map((v) => round(v)).join('<br>')}<br>
-			Grounded: ${actor.grounded}
+			Acc:<br>${actor.acc.map((v) => round(v)).join('<br>')}<br>
+			Vel:<br>${actor.vel.map((v) => round(v)).join('<br>')}<br>
+			Pos:<br>${actor.coords.map((v) => round(v)).join('<br>')}<br>
+			${actor.grounded ? 'Grounded' : 'Air'}
 		`;
+			// Friction Vel:<br>${actor.frictionVel.map((v) => round(v, 1000)).join('<br>')}<br>
 			DinoInterface.setHtml('#debug', html);
 		}
 
@@ -67673,204 +67973,15 @@
 		wandering: './audio/music/Chronosaurus_Wandering_Theme.mp3',
 	};
 
-	// const VOICE_RATES = [0.5, 1, 1, 1, 1.5, 1.75];
-	// const VOICE_PITCHES = [0.1, 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1, 1, 1.5, 2];
-	const VOICE_NAMES = {
-		David: 'Microsoft David - English (United States)',
-		Mark: 'Microsoft Mark - English (United States)',
-		Zira: 'Microsoft Zira - English (United States)',
-		Olivia: 'Google US English', // Female
-		Lily: 'Google UK English Female',
-		Jack: 'Google UK English Male',
-	};
-
-	class Speaker {
-		constructor(options = {}) {
-			const {
-				rate = 1,
-				pitch = 1,
-				voice = 0,
-			} = options;
-			// Dependencies
-			this.setTimeout = window.setTimeout;
-			this.speechSynthesis = window.speechSynthesis;
-			this.SpeechSynthesisUtterance = window.SpeechSynthesisUtterance;
-			// Properties
-			this.voiceList = [];
-			this.voice = Speaker.findVoice(voice);
-			this.rate = rate;
-			this.pitch = pitch;
-			// TODO: Is there a better way to set this up?
-			this.speechSynthesis.onvoiceschanged = () => {
-				this.voice = Speaker.findVoice(voice);
-			};
+	function averageAngles(angles = []) {
+		let x = 0;
+		let y = 0;
+		for (let i = 0; i < angles.length; i += 1) {
+			x += Math.cos(angles[i]);
+			y += Math.sin(angles[i]);
 		}
-
-		static warn(...args) {
-			console.warn(...args);
-		}
-
-		static findVoice(param, synth = window.speechSynthesis) {
-			if (typeof param === 'string') {
-				return Speaker.findVoiceByName(param, synth);
-			}
-			if (typeof param === 'number') {
-				return Speaker.getVoiceByIndex(param, synth);
-			}
-			if (typeof param === 'object') {
-				// Assume that this is a SpeechSynthesisVoice object
-				// TODO: Maybe allow a voiceParam that's a non-SpeechSynthesisVoice object
-				// to allow looking up of voices by gender, language, etc.
-				return param;
-			}
-			Speaker.warn('Could not find voice', param, 'so using default of first voice');
-			return Speaker.getVoiceByIndex(0, synth);
-		}
-
-		/**
-		 * Find a voice by name
-		 * @param {String} name - Can be the long name of the voice or a short, abbreviated name
-		 * @param {Object} synth - window.speechSynthesis
-		 * @returns SpeechSynthesisVoice
-		 */
-		static findVoiceByName(name, synth = window.speechSynthesis) {
-			const allVoices = Speaker.getVoices(synth);
-			const found = allVoices.find((voice) => (voice.name === name));
-			if (found) return found;
-			const longName = VOICE_NAMES[name];
-			if (!longName) return undefined;
-			return allVoices.find((voice) => (voice.name === longName));
-		}
-
-		/**
-		 * Get all voices that are offered
-		 * @param {speechSynthesis} synth
-		 * @returns SpeechSynthesisVoice
-		 */
-		static getVoices(synth = window.speechSynthesis) {
-			// TODO: Make this async and wait for onvoiceschanged?
-			return synth.getVoices();
-		}
-
-		static getEnglishVoices(synth = window.speechSynthesis) {
-			return Speaker.getVoices(synth).filter((voice) => (voice.lang.substring(0, 1) === 'en'));
-		}
-
-		static getVoiceByIndex(i, synth = window.speechSynthesis) {
-			const voices = Speaker.getVoices(synth);
-			return voices[i];
-		}
-
-		static computerSpeak(text, synth = window.speechSynthesis) {
-			synth.cancel();
-			Speaker.speak(text, 0, 0.3, 1.5);
-		}
-
-		static getSilenceTag(silenceMs = 0) {
-			// NOTE: This only seems to work with David and Mark
-			return `<silence msec="${Number(silenceMs)}" />`;
-		}
-
-		static joinArray(array = []) {
-			return array.map((item) => {
-				if (typeof item === 'string') return item;
-				if (typeof item === 'number') return Speaker.getSilenceTag(item);
-				if (typeof item === 'object') return Speaker.getSilenceTag(item.silence);
-				return '';
-			}).join(' ');
-		}
-
-		static speak(
-			textParam = '',
-			voiceParam = 0,
-			pitch = 1,
-			rate = 1,
-			silence = 0,
-			SpeechSynthesisUtterance = window.SpeechSynthesisUtterance,
-			synth = window.speechSynthesis,
-		) {
-			// Based on Oxygen Levels Critical, which in turn is based on
-			// an example from https://mdn.github.io/web-speech-api/speak-easy-synthesis/
-			let text = String(textParam);
-			if (silence) text = Speaker.getSilenceTag(silence) + text;
-			const utterance = new SpeechSynthesisUtterance(text);
-			const voice = Speaker.findVoice(voiceParam, synth);
-			utterance.voice = voice;
-			utterance.pitch = pitch;
-			utterance.rate = rate;
-			// utterance.onpause = (event) => {
-			// console.log('Speech paused', event);
-			// const char = event.utterance.text.charAt(event.charIndex);
-			// };
-			synth.speak(utterance);
-		}
-
-		speakText(text) {
-			this.speechSynthesis.cancel();
-			Speaker.speak(
-				text,
-				this.voice,
-				this.pitch,
-				this.rate,
-				0,
-				this.SpeechSynthesisUtterance,
-				this.speechSynthesis,
-			);
-			return this;
-		}
-
-		speak(param, param2) {
-			if (typeof param === 'string') {
-				return this.speak({ text: param, ...param2 });
-			}
-			if (typeof param !== 'object') {
-				return this.speakText(String(param));
-			}
-			if (param instanceof Array) {
-				const text = Speaker.joinArray(param);
-				return this.speak({ text, ...param2 });
-			}
-			const {
-				text = '',
-				silence = 0,
-				cancel = true,
-			} = param;
-			if (cancel) this.speechSynthesis.cancel();
-			Speaker.speak(
-				text,
-				this.voice,
-				this.pitch,
-				this.rate,
-				silence,
-				this.SpeechSynthesisUtterance,
-				this.speechSynthesis,
-			);
-			return this;
-		}
-
-		cancel() {
-			this.speechSynthesis.cancel();
-			return this;
-		}
-
-		wait(t = 0) {
-			return new Promise((resolve) => {
-				this.setTimeout(resolve, t);
-			});
-		}
-
-		pause(/* t = Infinity */) {
-			this.speechSynthesis.pause();
-			// if (t !== Infinity) {
-			// this.setTimeout(() => this.resume(), t);
-			// }
-			return this;
-		}
-
-		resume() {
-			this.speechSynthesis.resume();
-			return this;
-		}
+		const avgAngle = Math.atan2(y / angles.length, x / angles.length);
+		return avgAngle >= 0 ? avgAngle : avgAngle + 2 * Math.PI;
 	}
 
 	const PART_SIZE = 20;
@@ -67993,10 +68104,10 @@
 		forward: 0,
 		back: PI$1, // Or -PI
 		left: HALF_PI$1,
-		right: -HALF_PI$1, // FIXME: Tried PI + HALF_PI, but that also gives issues
+		right: PI$1 + HALF_PI$1, // FIXME: Tried -HALF_PI and PI + HALF_PI, but that also gives issues
 	};
 
-	window.Speaker = Speaker;
+	// window.Speaker = Speaker;
 
 	class DinoGame extends GenericGame {
 		constructor() {
@@ -68028,7 +68139,7 @@
 			this.despawnRadius = this.spawnRadii[1] * 1.5;
 			this.timeMachine = null;
 			this.headBop = 0.5;
-			// this.testMode = true;
+			this.testMode = true;
 			this.spawnDinos = true;
 		}
 
@@ -68039,9 +68150,10 @@
 
 		walkCharacter(t, angles = [], sprint = false) {
 			if (!angles.length) return;
-			const angleSum = angles.reduce((sum, a) => sum + a, 0) / angles.length;
+			const angle = averageAngles(angles);
 			const method = (sprint ? 'sprint' : 'walk');
-			this.mainCharacter[method](t, angleSum);
+			console.log(angles, angle);
+			this.mainCharacter[method](t, angle);
 			if (this.mainCharacter.grounded) {
 				// this.sounds.play('footsteps', { random: 0.1 });
 				if (this.tick % 100 === 0) this.sounds.play('footsteps');

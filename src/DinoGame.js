@@ -1,6 +1,6 @@
-import { ArrayCoords, Random, HALF_PI, PI, TAU } from 'rocket-utility-belt';
+import { ArrayCoords, Random, HALF_PI, PI, TAU, TWO_PI } from 'rocket-utility-belt';
+import { Speaker, PointerLocker } from 'rocket-boots';
 
-import PointerLocker from './PointerLocker.js';
 import DinoScene from './DinoScene.js';
 import GenericGame from './GenericGame.js';
 import DinoWorld from './DinoWorld.js';
@@ -12,7 +12,17 @@ import models from './models.js';
 import states from './states.js';
 import dinos from './dinos.js';
 import { sounds, music } from './soundsAndMusic.js';
-import Speaker from './Speaker.js';
+
+function averageAngles(angles = []) {
+	let x = 0;
+	let y = 0;
+	for (let i = 0; i < angles.length; i += 1) {
+		x += Math.cos(angles[i]);
+		y += Math.sin(angles[i]);
+	}
+	const avgAngle = Math.atan2(y / angles.length, x / angles.length);
+	return avgAngle >= 0 ? avgAngle : avgAngle + 2 * Math.PI;
+}
 
 const PART_SIZE = 20;
 const PART = {
@@ -134,10 +144,10 @@ const WALK_ANGLES = {
 	forward: 0,
 	back: PI, // Or -PI
 	left: HALF_PI,
-	right: -HALF_PI, // FIXME: Tried PI + HALF_PI, but that also gives issues
+	right: PI + HALF_PI, // FIXME: Tried -HALF_PI and PI + HALF_PI, but that also gives issues
 };
 
-window.Speaker = Speaker;
+// window.Speaker = Speaker;
 
 class DinoGame extends GenericGame {
 	constructor() {
@@ -169,7 +179,7 @@ class DinoGame extends GenericGame {
 		this.despawnRadius = this.spawnRadii[1] * 1.5;
 		this.timeMachine = null;
 		this.headBop = 0.5;
-		// this.testMode = true;
+		this.testMode = true;
 		this.spawnDinos = true;
 	}
 
@@ -180,9 +190,10 @@ class DinoGame extends GenericGame {
 
 	walkCharacter(t, angles = [], sprint = false) {
 		if (!angles.length) return;
-		const angleSum = angles.reduce((sum, a) => sum + a, 0) / angles.length;
+		const angle = averageAngles(angles);
 		const method = (sprint ? 'sprint' : 'walk');
-		this.mainCharacter[method](t, angleSum);
+		console.log(angles, angle);
+		this.mainCharacter[method](t, angle);
 		if (this.mainCharacter.grounded) {
 			// this.sounds.play('footsteps', { random: 0.1 });
 			if (this.tick % 100 === 0) this.sounds.play('footsteps');

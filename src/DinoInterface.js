@@ -114,10 +114,12 @@ class DinoInterface {
 	updateDebug(debug, actor) {
 		const html = `
 			Last delta T: ${round(debug.lastDeltaT)}<br>
-			Vel: ${actor.vel.map((v) => round(v)).join('<br>')}<br>
-			Pos: ${actor.coords.map((v) => round(v)).join('<br>')}<br>
-			Grounded: ${actor.grounded}
+			Acc:<br>${actor.acc.map((v) => round(v)).join('<br>')}<br>
+			Vel:<br>${actor.vel.map((v) => round(v)).join('<br>')}<br>
+			Pos:<br>${actor.coords.map((v) => round(v)).join('<br>')}<br>
+			${actor.grounded ? 'Grounded' : 'Air'}
 		`;
+		// Friction Vel:<br>${actor.frictionVel.map((v) => round(v, 1000)).join('<br>')}<br>
 		DinoInterface.setHtml('#debug', html);
 	}
 
