@@ -1,4 +1,4 @@
-import { ArrayCoords, Speaker, PointerLocker, averageAngles, Random, HALF_PI, PI, TAU } from 'rocket-boots';
+import { ArrayCoords, Speaker, PointerLocker, averageAngles, Random, HALF_PI, PI, TWO_PI, TAU } from 'rocket-boots';
 
 import DinoScene from './DinoScene.js';
 import GenericGame from './GenericGame.js';
@@ -169,6 +169,7 @@ class DinoGame extends GenericGame {
 		this.headBop = 0.5;
 		// this.testMode = true;
 		this.spawnDinos = true;
+		this.scanResults = []; // Need to cache this so we don't calculate every tick
 	}
 
 	say(text) {
@@ -324,16 +325,40 @@ class DinoGame extends GenericGame {
 
 		this.checkEncounter(t);
 
-		return { terrainChunks };
+		if (this.tick % 60 === 0) {
+			// TODO: replenish cache if user hits F
+			this.scanResults = this.calcScannableItems();
+		}
+		const { scanResults } = this;
+
+		return { terrainChunks, scanResults };
 	}
 
-	calcScannableItemPercentages() {
-		const { coords } = this.mainCharacter;
+	calcScannableItems() {
+		const { coords, facing } = this.mainCharacter;
+		// Return between -PI and +PI
+		const fixAngle = (radians) => {
+			const fix = radians % TWO_PI;
+			if (fix < -PI) return fix + TWO_PI;
+			if (fix > PI) return fix - TWO_PI;
+			return fix;
+		};
+		// const fixedFacing = fixAngle(facing);
 		const MAX_SCAN = 5000;
-		return this.items.filter((item) => item.scannable).map((item) => {
-			const dist = ArrayCoords.getDistance(coords, item.coords);
-			return Math.max(1 - (dist / MAX_SCAN), 0);
-		});
+		return this.items
+			.filter((item) => item.scannable)
+			.map((item) => {
+				const distance = ArrayCoords.getDistance(coords, item.coords);
+				const angle = ArrayCoords.getAngleFacing(coords, item.coords);
+				// const fixedAngle = fixAngle(angle);
+				const sortAngle = fixAngle(facing - angle);
+				const percent = Math.max(1 - (distance / MAX_SCAN), 0);
+				const absAngle = Math.abs(sortAngle);
+				const behind = absAngle > HALF_PI;
+				const front = absAngle < 0.4; // close to 1/8 PI
+				return { item, distance, angle, sortAngle, facing, percent, behind, front };
+			})
+			.sort((a, b) => (a.sortAngle - b.sortAngle));
 	}
 
 	getSun() {
@@ -346,7 +371,7 @@ class DinoGame extends GenericGame {
 	}
 
 	assembleRenderData(gameTickData = {}) { // You should overwrite this method
-		const { terrainChunks } = gameTickData;
+		const { terrainChunks, scanResults } = gameTickData;
 		// Assemble data needed to render
 		const {
 			cameraPosition,
@@ -370,14 +395,13 @@ class DinoGame extends GenericGame {
 			sunLightAngle,
 		};
 		const { inventory } = mainCharacter;
-		const scannerItemPercentages = this.calcScannableItemPercentages();
 		const worldTimeArray = [
 			this.getWorldHour(), this.getWorldMinutes(),
 		];
 		const interfaceUpdates = {
 			actor: mainCharacter,
 			item: iItem,
-			scannerItemPercentages,
+			scanResults,
 			inventory,
 			debug: (this.testMode) ? {
 				lastDeltaT: this.lastDeltaT,

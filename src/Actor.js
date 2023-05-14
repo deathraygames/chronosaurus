@@ -13,7 +13,7 @@ class Actor extends Entity {
 		this.mass = options.mass || 60; // kg
 		this.stamina = new Pool(50, 50);
 		this.staminaRegenPerSecond = 5;
-		this.staminaUsePerWalk = 1.4; // per second
+		this.staminaUsePerWalk = 1.3; // per second
 		this.health = new Pool(50, 50);
 		this.healthRegenPerSecond = 2;
 		this.tiredMultiplier = 0.3;

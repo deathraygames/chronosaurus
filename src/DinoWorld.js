@@ -9,6 +9,8 @@ const DARK_GREEN = [80, 141, 118]; // Dark green = #508d76
 const TAN = [204, 146, 94]; // Tan #cc925e
 const DARK_GRAY = [125, 110, 100]; // #7d6e6e
 
+const UNITS_PER_METER = 20;
+
 class DinoWorld {
 	constructor() {
 		const todaysSeed = PseudoRandomizer.getPseudoRandInt(Number(new Date()), 1000);
@@ -16,7 +18,7 @@ class DinoWorld {
 		// Sizes are measured in integer "units"
 		// 20 units = 1m = 100cm
 		// 1 unit = 5cm
-		this.unitsPerMeter = 20;
+		this.unitsPerMeter = UNITS_PER_METER;
 		// A chunk with size of 128m is roughly the size of ~10 houses.
 		// A collection of 3x3 chunks would be 384m, larger than a nyc city block (274m)
 		this.chunkSizeMeters = 128;

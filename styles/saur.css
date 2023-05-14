@@ -342,25 +342,38 @@ label[for]:hover {
 #scans {
 	display: flex;
 	list-style: none;
-	margin: 0;
+	margin: 0.2em 0;
 	height: 20vmin;
 	border: dotted 1px rgba(255, 255, 255, 0.5);
 	border-left: 0;
 	border-right: 0;
-	float: right;
+	background: rgba(0, 0, 0, 0.1);
+	position: relative;
 }
-#scans li {
+.scan-bar {
 	display: inline-block;
 	margin: 0 0.4vw;
-	/* width: 0.4vmin; */
-	width: 3px;
+	width: 4px;
 	background: var(--hud-color);
 }
-#scans li > span {
+.scan-bar > span {
 	display: none;
 }
-#scans li:hover > span {
+.scan-bar:hover > span {
 	display: block;
+	position: absolute;
+	background: rgba(0, 0, 0, 0.5);
+	padding: 0.1em;
+	border: solid 1px var(--hud-color);
+}
+.scan-bar.scan-bar-time-machine {
+	background: #c2b5a9;
+}
+.scan-bar.scan-bar-behind {
+	opacity: 0.2;
+}
+.scan-bar.scan-bar-front {
+	/* border-color: #cc925e; */
 }
 
 #log {

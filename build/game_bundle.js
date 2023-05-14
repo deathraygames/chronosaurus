@@ -5,6 +5,7 @@ var game_bundle = (function () {
 
 	const { PI: PI$1 } = Math;
 	const TAU$1 = PI$1 * 2;
+	const TWO_PI = TAU$1;
 	const HALF_PI$1 = PI$1 / 2;
 	const DEGREES_PER_RADIAN = (180 / PI$1);
 	const CARDINAL_FACING_RADIANS = Object.freeze([0, PI$1 * 0.5, PI$1, PI$1 * 1.5]);
@@ -66260,7 +66261,7 @@ var game_bundle = (function () {
 			const {
 				gravity = [0, 0, -80],
 				// Friction velocity magnitude percentages per millisecond
-				groundFriction = 0.005,
+				groundFriction = 0.006,
 				airFriction = 0.0001,
 				accelerationDecay = 0.9,
 			} = options;
@@ -66868,6 +66869,8 @@ var game_bundle = (function () {
 	const TAN = [204, 146, 94]; // Tan #cc925e
 	const DARK_GRAY = [125, 110, 100]; // #7d6e6e
 
+	const UNITS_PER_METER$1 = 20;
+
 	class DinoWorld {
 		constructor() {
 			const todaysSeed = PseudoRandomizer.getPseudoRandInt(Number(new Date()), 1000);
@@ -66875,7 +66878,7 @@ var game_bundle = (function () {
 			// Sizes are measured in integer "units"
 			// 20 units = 1m = 100cm
 			// 1 unit = 5cm
-			this.unitsPerMeter = 20;
+			this.unitsPerMeter = UNITS_PER_METER$1;
 			// A chunk with size of 128m is roughly the size of ~10 houses.
 			// A collection of 3x3 chunks would be 384m, larger than a nyc city block (274m)
 			this.chunkSizeMeters = 128;
@@ -67134,7 +67137,7 @@ var game_bundle = (function () {
 			this.mass = options.mass || 60; // kg
 			this.stamina = new Pool(50, 50);
 			this.staminaRegenPerSecond = 5;
-			this.staminaUsePerWalk = 1.4; // per second
+			this.staminaUsePerWalk = 1.3; // per second
 			this.health = new Pool(50, 50);
 			this.healthRegenPerSecond = 2;
 			this.tiredMultiplier = 0.3;
@@ -67422,6 +67425,8 @@ var game_bundle = (function () {
 	const SHOW_CLASS = 'ui-show';
 	const HIDE_CLASS = 'ui-hide';
 
+	const UNITS_PER_METER = 20; // TODO: get from world
+
 	function round(n = 0, m = 100) {
 		return Math.round(n * m) / m;
 	}
@@ -67542,12 +67547,30 @@ var game_bundle = (function () {
 			DinoInterface.setHtml('#debug', html);
 		}
 
-		updateScanner(scannerItemPercentages = []) {
-			const numbers = scannerItemPercentages
-				.map((n) => Math.max(1, round(100 * n))) // No less than 1%, and round to .00
-				.sort((a, b) => (a - b));
-			const listItems = numbers.map((n) => `<li class="scan-bar" style="height: ${n}%;"><span>${n}</span></li>`);
+		updateScanner(scanResults = []) {
+			let nearestDistance = Infinity;
+			let nearestTimeMachine = false;
+			const listItems = scanResults
+				.map(({ item, distance, percent, sortAngle, behind, front }) => {
+					// No less than 1%, and round to .00
+					const displayPercent = Math.max(1, round(100 * percent));
+					const classes = ['scan-bar'];
+					if (item.isTimeMachine) classes.push('scan-bar-time-machine');
+					if (distance < nearestDistance) {
+						nearestDistance = distance;
+						nearestTimeMachine = item.isTimeMachine;
+					}
+					if (behind) classes.push('scan-bar-behind');
+					if (front) classes.push('scan-bar-front');
+					return `<li class="${classes.join(' ')}" style="height: ${displayPercent}%;">
+					<span>${round(distance / UNITS_PER_METER)}m ${round(sortAngle)}rad</span>
+				</li>`;
+				});
 			DinoInterface.setHtml('#scans', listItems.join(''));
+			DinoInterface.setText(
+				'#nearest-scan',
+				`Nearest: ${round(nearestDistance / UNITS_PER_METER)} m ${nearestTimeMachine ? '(Time machine)' : ''}`,
+			);
 		}
 
 		updateLog() {
@@ -67589,12 +67612,12 @@ var game_bundle = (function () {
 
 		render(interfaceUpdates = {}) {
 			const {
-				item, actor, scannerItemPercentages, inventory, debug, worldTimeArray,
+				item, actor, scanResults, inventory, debug, worldTimeArray,
 			} = interfaceUpdates;
 			this.updateLog();
 			if (debug) this.updateDebug(debug, actor);
 			this.updateInteraction(item);
-			this.updateScanner(scannerItemPercentages);
+			this.updateScanner(scanResults);
 			this.updateStats(actor);
 			this.updateClock(worldTimeArray);
 			this.updateLog();
@@ -68222,6 +68245,7 @@ var game_bundle = (function () {
 			this.headBop = 0.5;
 			// this.testMode = true;
 			this.spawnDinos = true;
+			this.scanResults = []; // Need to cache this so we don't calculate every tick
 		}
 
 		say(text) {
@@ -68370,16 +68394,40 @@ var game_bundle = (function () {
 
 			this.checkEncounter(t);
 
-			return { terrainChunks };
+			if (this.tick % 60 === 0) {
+				// TODO: replenish cache if user hits F
+				this.scanResults = this.calcScannableItems();
+			}
+			const { scanResults } = this;
+
+			return { terrainChunks, scanResults };
 		}
 
-		calcScannableItemPercentages() {
-			const { coords } = this.mainCharacter;
+		calcScannableItems() {
+			const { coords, facing } = this.mainCharacter;
+			// Return between -PI and +PI
+			const fixAngle = (radians) => {
+				const fix = radians % TWO_PI;
+				if (fix < -PI$1) return fix + TWO_PI;
+				if (fix > PI$1) return fix - TWO_PI;
+				return fix;
+			};
+			// const fixedFacing = fixAngle(facing);
 			const MAX_SCAN = 5000;
-			return this.items.filter((item) => item.scannable).map((item) => {
-				const dist = ArrayCoords.getDistance(coords, item.coords);
-				return Math.max(1 - (dist / MAX_SCAN), 0);
-			});
+			return this.items
+				.filter((item) => item.scannable)
+				.map((item) => {
+					const distance = ArrayCoords.getDistance(coords, item.coords);
+					const angle = ArrayCoords.getAngleFacing(coords, item.coords);
+					// const fixedAngle = fixAngle(angle);
+					const sortAngle = fixAngle(facing - angle);
+					const percent = Math.max(1 - (distance / MAX_SCAN), 0);
+					const absAngle = Math.abs(sortAngle);
+					const behind = absAngle > HALF_PI$1;
+					const front = absAngle < 0.4; // close to 1/8 PI
+					return { item, distance, angle, sortAngle, facing, percent, behind, front };
+				})
+				.sort((a, b) => (a.sortAngle - b.sortAngle));
 		}
 
 		getSun() {
@@ -68392,7 +68440,7 @@ var game_bundle = (function () {
 		}
 
 		assembleRenderData(gameTickData = {}) { // You should overwrite this method
-			const { terrainChunks } = gameTickData;
+			const { terrainChunks, scanResults } = gameTickData;
 			// Assemble data needed to render
 			const {
 				cameraPosition,
@@ -68416,14 +68464,13 @@ var game_bundle = (function () {
 				sunLightAngle,
 			};
 			const { inventory } = mainCharacter;
-			const scannerItemPercentages = this.calcScannableItemPercentages();
 			const worldTimeArray = [
 				this.getWorldHour(), this.getWorldMinutes(),
 			];
 			const interfaceUpdates = {
 				actor: mainCharacter,
 				item: iItem,
-				scannerItemPercentages,
+				scanResults,
 				inventory,
 				debug: (this.testMode) ? {
 					lastDeltaT: this.lastDeltaT,

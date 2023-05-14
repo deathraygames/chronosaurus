@@ -191,7 +191,7 @@ class Entity {
 		const {
 			gravity = [0, 0, -80],
 			// Friction velocity magnitude percentages per millisecond
-			groundFriction = 0.005,
+			groundFriction = 0.006,
 			airFriction = 0.0001,
 			accelerationDecay = 0.9,
 		} = options;

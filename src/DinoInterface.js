@@ -3,6 +3,8 @@
 const SHOW_CLASS = 'ui-show';
 const HIDE_CLASS = 'ui-hide';
 
+const UNITS_PER_METER = 20; // TODO: get from world
+
 function round(n = 0, m = 100) {
 	return Math.round(n * m) / m;
 }
@@ -123,12 +125,30 @@ class DinoInterface {
 		DinoInterface.setHtml('#debug', html);
 	}
 
-	updateScanner(scannerItemPercentages = []) {
-		const numbers = scannerItemPercentages
-			.map((n) => Math.max(1, round(100 * n))) // No less than 1%, and round to .00
-			.sort((a, b) => (a - b));
-		const listItems = numbers.map((n) => `<li class="scan-bar" style="height: ${n}%;"><span>${n}</span></li>`);
+	updateScanner(scanResults = []) {
+		let nearestDistance = Infinity;
+		let nearestTimeMachine = false;
+		const listItems = scanResults
+			.map(({ item, distance, percent, sortAngle, behind, front }) => {
+				// No less than 1%, and round to .00
+				const displayPercent = Math.max(1, round(100 * percent));
+				const classes = ['scan-bar'];
+				if (item.isTimeMachine) classes.push('scan-bar-time-machine');
+				if (distance < nearestDistance) {
+					nearestDistance = distance;
+					nearestTimeMachine = item.isTimeMachine;
+				}
+				if (behind) classes.push('scan-bar-behind');
+				if (front) classes.push('scan-bar-front');
+				return `<li class="${classes.join(' ')}" style="height: ${displayPercent}%;">
+					<span>${round(distance / UNITS_PER_METER)}m ${round(sortAngle)}rad</span>
+				</li>`;
+			});
 		DinoInterface.setHtml('#scans', listItems.join(''));
+		DinoInterface.setText(
+			'#nearest-scan',
+			`Nearest: ${round(nearestDistance / UNITS_PER_METER)} m ${nearestTimeMachine ? '(Time machine)' : ''}`,
+		);
 	}
 
 	updateLog() {
@@ -170,12 +190,12 @@ class DinoInterface {
 
 	render(interfaceUpdates = {}) {
 		const {
-			item, actor, scannerItemPercentages, inventory, debug, worldTimeArray,
+			item, actor, scanResults, inventory, debug, worldTimeArray,
 		} = interfaceUpdates;
 		this.updateLog();
 		if (debug) this.updateDebug(debug, actor);
 		this.updateInteraction(item);
-		this.updateScanner(scannerItemPercentages);
+		this.updateScanner(scanResults);
 		this.updateStats(actor);
 		this.updateClock(worldTimeArray);
 		this.updateLog();
