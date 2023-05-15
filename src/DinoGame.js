@@ -1,92 +1,16 @@
-import { ArrayCoords, Speaker, PointerLocker, averageAngles, Random, HALF_PI, PI, TWO_PI, TAU } from 'rocket-boots';
+import { ArrayCoords, Speaker, PointerLocker, averageAngles, HALF_PI, PI, TWO_PI, TAU } from 'rocket-boots';
 
 import DinoScene from './DinoScene.js';
 import GenericGame from './GenericGame.js';
 import DinoWorld from './DinoWorld.js';
+import DinoTerrain from './DinoTerrain.js';
 import Actor from './Actor.js';
 import DinoSoundController from './DinoSoundController.js';
 import DinoItem from './DinoItem.js';
 import DinoInterface from './DinoInterface.js';
 import models from './models.js';
 import states from './states.js';
-import dinos from './dinos.js';
 import { sounds, music } from './soundsAndMusic.js';
-
-const PART_SIZE = 20;
-const PART = {
-	name: 'Time travel machine part',
-	randomAtRadius: 100,
-	size: PART_SIZE,
-	rooted: true,
-	scannable: true,
-	timeTravelPart: true,
-	interactionRange: PART_SIZE + 40,
-	interactionAction: 'Dig',
-	interactionEffort: 100,
-	heightSizeOffset: 0,
-	inventoryDescription: 'This should be useful for rebuilding your time machine.',
-	interactionResult: {
-		modify: {
-			heightSizeOffset: 0.5,
-			rooted: false,
-			// collectible: true,
-			interactionAction: 'Pick up',
-			interactionEffort: 0,
-			interactionResult: { pickUp: true },
-		},
-	},
-	castShadow: true,
-	renderAs: 'model',
-	model: 'gear',
-};
-const PARTS = [
-	{ ...PART, randomAtRadius: 400, model: 'sputnik', heightSizeOffset: -0.5 },
-	{ ...PART, randomAtRadius: 600 },
-	{ ...PART, randomAtRadius: 700, model: 'computer', heightSizeOffset: -0.5 },
-	{ ...PART, randomAtRadius: 1200, model: 'commandPod', heightSizeOffset: -0.25 },
-	{ ...PART, randomAtRadius: 2200, model: 'sputnik' },
-	{ ...PART, randomAtRadius: 2000 },
-	{ ...PART, randomAtRadius: 3000, model: 'sputnik' },
-	{ ...PART, randomAtRadius: 4000, model: 'computer' },
-	{ ...PART, randomAtRadius: 5000 },
-];
-// Powers:
-// - GPS Gravitation-wave Positioning System -- provides x,y,z coordinates
-// - Compass --- provides N, S, E, W compass
-// - Scanner --- provides some way to detect parts
-// - threat monitor --- beeps when a creature neatby is aggro'd
-// - rocket boots --- big jumps
-// - Chrono-collector --- collects time resource
-// - time-stopper --- drops a bubble that stops everyone but character in a radius
-// - ranged time-stopper --- time bubble near where it's fired
-// - overhead camera --- provides a map view
-// - scanning visor --- provides a wireframe view with things highlighted
-// - drone --- provides a mobile viewing system
-// - laser gun
-const PARTS_NEEDED = 6;
-const ITEMS = [
-	...PARTS,
-	{
-		name: 'time machine',
-		isTimeMachine: true,
-		randomAtRadius: 10,
-		rooted: true,
-		scannable: true,
-		size: 20,
-		heightSizeOffset: 0,
-		renderAs: 'model',
-		model: 'teleporter',
-		inventorySize: 100,
-		// color: [1, 1, 1],
-		interactionRange: 80,
-		interactionAction: 'Add part',
-		interactionEffort: 0,
-		damage: PARTS_NEEDED,
-		interactionResult: {
-			repair: 'timeTravelPart',
-		},
-	},
-];
 
 const DEFAULT_TIME = 5; // ms
 
@@ -154,20 +78,14 @@ class DinoGame extends GenericGame {
 			SoundControllerClass: DinoSoundController,
 			// SoundControllerClass: SoundController,
 		});
+		this.terrainBuilder = new DinoTerrain();
 		this.speaker = new Speaker({ voice: 'David', pitch: 1.2, rate: 0.9 });
 		this.pointerLocker = new PointerLocker();
 		this.cameraPosition = [0, 0, 0];
 		this.cameraVerticalRotation = HALF_PI;
-		// How spaced-out do you want the spawned actors
-		this.spawnActorDistance = 1000;
-		// Min spawn distance should be greater than the sight view of enemies so that they
-		// don't spawn and instantly attack.
-		// Max spawn distance should be somwhat similar to half the size of all the chunks being shown
-		this.spawnRadii = [this.spawnActorDistance, 3500];
-		this.despawnRadius = this.spawnRadii[1] * 1.5;
 		this.timeMachine = null;
 		this.headBop = 0.5;
-		// this.testMode = true;
+		this.testMode = true;
 		this.spawnDinos = true;
 		this.scanResults = []; // Need to cache this so we don't calculate every tick
 	}
@@ -193,13 +111,13 @@ class DinoGame extends GenericGame {
 	}
 
 	interactNearest(t) {
-		const [, iItem] = this.findNearestInRangeInteractableItem(this.mainCharacter.coords);
+		const [, iItem] = this.world.findNearestInRangeInteractableItem(this.mainCharacter.coords);
 		if (!iItem) return;
 		if (this.tick % 100 === 0) this.sounds.play('collect');
 		const amount = t / 40;
-		const messages = this.ItemClass.interact(iItem, this.mainCharacter, amount);
+		const messages = this.world.ItemClass.interact(iItem, this.mainCharacter, amount);
 		if (messages) this.interface.addToLog(messages);
-		this.setHeightToTerrain(iItem, this.world);
+		this.setHeightToTerrain(iItem);
 	}
 
 	handleCommandsDown(commands = [], t = DEFAULT_TIME) {
@@ -240,12 +158,12 @@ class DinoGame extends GenericGame {
 		} else if (firstCommand === 'interact') {
 			if (commandWords[1] === 'nearest') {
 				this.sounds.play('collect');
-				// const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
+				// const [, iItem] = this.world.findNearestInRangeInteractableItem(mainCharacter.coords);
 				// if (!iItem) return;
 				// this.sounds.play('collect');
 				// const messages = this.ItemClass.interact(iItem, mainCharacter, 1);
 				// if (messages) this.interface.addToLog(messages);
-				// this.setHeightToTerrain(iItem, this.world);
+				// this.setHeightToTerrain(iItem);
 			}
 		} else if (firstCommand === 'jump') {
 			// const didJump = mainCharacter.jump();
@@ -258,9 +176,9 @@ class DinoGame extends GenericGame {
 		}
 	}
 
-	setHeightToTerrain(entity, world) {
+	setHeightToTerrain(entity) {
 		const [x, y, z] = entity.coords;
-		let h = world.getTerrainHeight(x, y);
+		let h = this.terrainBuilder.getTerrainHeight(x, y);
 		h += (entity.heightSizeOffset * entity.size);
 		const grounded = (z <= h + 1);
 		// have a small offset of h (+1) so things aren't in the air going from one tiny bump downwards
@@ -282,8 +200,8 @@ class DinoGame extends GenericGame {
 	}
 
 	checkEncounter(t) {
-		const { mainCharacter, actors } = this;
-		const damagingActors = actors.filter((actor) => {
+		const { mainCharacter, world } = this;
+		const damagingActors = world.actors.filter((actor) => {
 			const dist = ArrayCoords.getDistance(mainCharacter.coords, actor.coords);
 			const inDamageRange = dist <= actor.damageRange;
 			return (!actor.isCharacter && inDamageRange);
@@ -301,10 +219,8 @@ class DinoGame extends GenericGame {
 		this.checkDead();
 
 		if (this.tick % 300 === 0 && this.spawnDinos) {
-			this.addNewDino();
+			this.world.addNewDino(this.mainCharacter.coords);
 		}
-		// Clean items and actors to remove missing/dead
-		this.despawn(this.mainCharacter.coords);
 
 		// Handle camera position
 		const zoom = this.mouseWheelWatcher.percent * 100;
@@ -315,13 +231,15 @@ class DinoGame extends GenericGame {
 		// Handle commands being held down
 		this.handleCommandsDown(this.kbCommander.getCommandsDown(), t);
 
-		// Generate terrain
-		const { mainCharacter, actors } = this;
+		// Generate terrain -  // TODO: move to SimWorld
+		const { mainCharacter, world } = this;
 		const chunkRadius = Math.min(0 + Math.floor(this.tick / 70), 3);
-		const terrainChunks = this.world.makeTerrainChunks(mainCharacter.coords, chunkRadius);
+		const terrainChunks = this.terrainBuilder.makeTerrainChunks(mainCharacter.coords, chunkRadius);
 		// Update actors
-		actors.forEach((actor) => actor.update(t, this.world, this));
-		actors.forEach((actor) => this.setHeightToTerrain(actor, this.world));
+		// TODO: Move to SimWorld
+		world.actors.forEach((actor) => this.setHeightToTerrain(actor));
+		// Clean items and actors to remove missing/dead
+		world.despawn(mainCharacter.coords); // TODO: move to SimWorld
 
 		this.checkEncounter(t);
 
@@ -345,7 +263,7 @@ class DinoGame extends GenericGame {
 		};
 		// const fixedFacing = fixAngle(facing);
 		const MAX_SCAN = 5000;
-		return this.items
+		return this.world.items
 			.filter((item) => item.scannable)
 			.map((item) => {
 				const distance = ArrayCoords.getDistance(coords, item.coords);
@@ -361,15 +279,6 @@ class DinoGame extends GenericGame {
 			.sort((a, b) => (a.sortAngle - b.sortAngle));
 	}
 
-	getSun() {
-		const hr = this.getWorldHour();
-		// Angle of 0 = fully risen, 12 = fully hidden
-		const sunLightAngle = (((hr / 24) * TAU) + PI) % TAU;
-		// TODO: Change the color of the sun light?
-		// TODO: Set min and max intensity values
-		return { sunLightAngle };
-	}
-
 	assembleRenderData(gameTickData = {}) { // You should overwrite this method
 		const { terrainChunks, scanResults } = gameTickData;
 		// Assemble data needed to render
@@ -377,27 +286,24 @@ class DinoGame extends GenericGame {
 			cameraPosition,
 			cameraVerticalRotation,
 			mainCharacter,
-			actors,
-			items,
 		} = this;
 		const [x, y, z] = mainCharacter.coords;
-		const [, iItem] = this.findNearestInRangeInteractableItem(mainCharacter.coords);
-		const { sunLightAngle } = this.getSun();
+		const [, iItem] = this.world.findNearestInRangeInteractableItem(mainCharacter.coords);
+		const { sunLightAngle } = this.world.getSun();
+		const entities = [...this.world.actors, ...this.world.items];
 		const sceneUpdateOptions = {
 			terrainChunks,
 			// cameraPosition: [-(zoom ** 1.5), -zoom / 2, 30 + (zoom ** 2)],
 			cameraPosition,
 			cameraRotationGoalArray: [cameraVerticalRotation, 0, mainCharacter.facing - HALF_PI],
 			worldCoords: [-x, -y, -z],
-			entities: [...actors, ...items],
+			entities,
 			// skyColor: [0.5, 0.75, 1],
-			skyColor: SKY_COLOR_PER_HOUR[this.getWorldHour()],
+			skyColor: SKY_COLOR_PER_HOUR[this.world.getHour()],
 			sunLightAngle,
 		};
 		const { inventory } = mainCharacter;
-		const worldTimeArray = [
-			this.getWorldHour(), this.getWorldMinutes(),
-		];
+		const worldTimeArray = [this.world.getHour(), this.world.getMinutes()];
 		const interfaceUpdates = {
 			actor: mainCharacter,
 			item: iItem,
@@ -414,55 +320,11 @@ class DinoGame extends GenericGame {
 		};
 	}
 
-	getRandomSpawnCoords() {
-		const [minRadius, maxRadius] = this.spawnRadii;
-		const r = minRadius + Random.randomInt(maxRadius - minRadius);
-		const angle = Random.randomAngle();
-		const [x, y] = ArrayCoords.polarToCartesian(r, angle);
-		return ArrayCoords.add(this.mainCharacter.coords, [x, y, 0]);
-	}
-
-	addNewDino() {
-		const coords = this.getRandomSpawnCoords();
-		const [distance] = this.findNearestActor(coords);
-		if (distance < this.spawnActorDistance) return null;
-		// const randColor = () => (0.5 + (Random.random() * 0.5));
-		const dinoKey = Random.pick(Object.keys(dinos));
-		const dinoOpt = dinos[dinoKey];
-		const dino = this.addNewActor(dinoOpt);
-		dino.coords = coords;
-		console.log('Added dino', dino.name, dino.entityId);
-		return dino;
-	}
-
-	addNewTrees(n) {
-		for (let i = n; i > 0; i -= 1) this.addNewTree();
-	}
-
-	addNewTree() {
-		const coords = this.getRandomSpawnCoords();
-		this.addNewItem({
-			isTree: true,
-			color: Random.pick(['#76c379', '#508d76']),
-			renderAs: 'model',
-			model: 'royalPalm',
-			coords,
-			rooted: true,
-		});
-		// TODO:
-		// Create random tree and find a location
-		// Add a despawnRadius
-		// Then also run this a few more times when a new chunk is loaded
-	}
-
 	buildWorld() {
-		ITEMS.forEach((itemData) => {
-			this.addNewItem(itemData);
-		});
-		this.addNewTrees(32);
-		this.items.forEach((item) => {
+		this.world.build(this.mainCharacter.coords);
+		this.world.items.forEach((item) => {
 			if (item.rooted) {
-				this.setHeightToTerrain(item, this.world);
+				this.setHeightToTerrain(item, this.terrainBuilder);
 			}
 			if (item.isTimeMachine) this.timeMachine = item;
 		});
@@ -470,9 +332,9 @@ class DinoGame extends GenericGame {
 
 	async setup() {
 		const { spirit } = this.addNewPlayer();
-		this.mainCharacter = this.addNewCharacter({
+		this.mainCharacter = this.world.addNewCharacter({
 			spirit,
-			inventorySize: PARTS.length,
+			inventorySize: this.world.getTotalParts(),
 			coords: [0, 0, 0],
 			// walkForce: 1000,
 			// jumpForce: 1000 * 20,

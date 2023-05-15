@@ -100,7 +100,7 @@ class Actor extends Entity {
 	// TODO
 	// }
 
-	updateLook(t, gameWorld) {
+	updateLook(t, simWorld) {
 		if (!this.autonomous) return null;
 		// Look for a new target?
 		if (this.cooldowns.looking) return null;
@@ -110,7 +110,7 @@ class Actor extends Entity {
 		this.heatUp('looking', 1);
 		// Do the look in the game world
 		const filter = (actor) => (actor.faction !== this.faction && actor.entityId !== this.entityId);
-		const [dist, who] = gameWorld.findNearestActor(this.coords, filter);
+		const [dist, who] = simWorld.findNearestActor(this.coords, filter);
 		if (!who) return [dist, who];
 		if (dist < this.fleeDistance) {
 			// Don't set the `lookTargetEntity` because we don't want to turn and look at
@@ -191,13 +191,13 @@ class Actor extends Entity {
 		if (remainderToTurn < 0.2) this.walk(t, 0, proximityFraction);
 	}
 
-	update(t, world, game) {
+	update(t, simWorld) {
 		const seconds = t / 1000;
 		this.health.clearLastDelta(); // TODO: move this somewhere else?
 		this.regenerate(seconds);
 		this.updateTimers(seconds);
 		// this.updateEmotions(t);
-		this.updateLook(t, game);
+		this.updateLook(t, simWorld);
 		// Make a plan and handle it
 		const newPlan = this.updatePlan(t);
 		if (newPlan) this.currentPlan = newPlan;

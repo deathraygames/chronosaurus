@@ -1,268 +1,129 @@
-/* eslint-disable class-methods-use-this */
-import { PseudoRandomizer, ArrayCoords, clamp } from 'rocket-boots';
-import noise from 'noise-esm';
+import { Random } from 'rocket-boots';
+import SimWorld from './triludo/SimWorld.js';
+import dinos from './dinos.js';
 
-const { X, Y } = ArrayCoords;
+const PART_SIZE = 20;
+const PART = {
+	name: 'Time travel machine part',
+	randomAtRadius: 100,
+	size: PART_SIZE,
+	rooted: true,
+	scannable: true,
+	timeTravelPart: true,
+	interactionRange: PART_SIZE + 40,
+	interactionAction: 'Dig',
+	interactionEffort: 100,
+	heightSizeOffset: 0,
+	inventoryDescription: 'This should be useful for rebuilding your time machine.',
+	interactionResult: {
+		modify: {
+			heightSizeOffset: 0.5,
+			rooted: false,
+			// collectible: true,
+			interactionAction: 'Pick up',
+			interactionEffort: 0,
+			interactionResult: { pickUp: true },
+		},
+	},
+	castShadow: true,
+	renderAs: 'model',
+	model: 'gear',
+};
+const PARTS = [
+	{ ...PART, randomAtRadius: 400, model: 'sputnik', heightSizeOffset: -0.5 },
+	{ ...PART, randomAtRadius: 600 },
+	{ ...PART, randomAtRadius: 700, model: 'computer', heightSizeOffset: -0.5 },
+	{ ...PART, randomAtRadius: 1200, model: 'commandPod', heightSizeOffset: -0.25 },
+	{ ...PART, randomAtRadius: 2200, model: 'sputnik' },
+	{ ...PART, randomAtRadius: 2000 },
+	{ ...PART, randomAtRadius: 3000, model: 'sputnik' },
+	{ ...PART, randomAtRadius: 4000, model: 'computer' },
+	{ ...PART, randomAtRadius: 5000 },
+];
+// Powers:
+// - GPS Gravitation-wave Positioning System -- provides x,y,z coordinates
+// - Compass --- provides N, S, E, W compass
+// - Scanner --- provides some way to detect parts
+// - threat monitor --- beeps when a creature neatby is aggro'd
+// - rocket boots --- big jumps
+// - Chrono-collector --- collects time resource
+// - time-stopper --- drops a bubble that stops everyone but character in a radius
+// - ranged time-stopper --- time bubble near where it's fired
+// - overhead camera --- provides a map view
+// - scanning visor --- provides a wireframe view with things highlighted
+// - drone --- provides a mobile viewing system
+// - laser gun
+const PARTS_NEEDED = 6;
+const ITEMS = [
+	...PARTS,
+	{
+		name: 'time machine',
+		isTimeMachine: true,
+		randomAtRadius: 10,
+		rooted: true,
+		scannable: true,
+		size: 20,
+		heightSizeOffset: 0,
+		renderAs: 'model',
+		model: 'teleporter',
+		inventorySize: 100,
+		// color: [1, 1, 1],
+		interactionRange: 80,
+		interactionAction: 'Add part',
+		interactionEffort: 0,
+		damage: PARTS_NEEDED,
+		interactionResult: {
+			repair: 'timeTravelPart',
+		},
+	},
+];
 
-const LIGHT_GREEN = [118, 195, 121]; // Light green = #76c379
-const DARK_GREEN = [80, 141, 118]; // Dark green = #508d76
-const TAN = [204, 146, 94]; // Tan #cc925e
-const DARK_GRAY = [125, 110, 100]; // #7d6e6e
+export default class DinoWorld extends SimWorld {
+	// constructor(...args) {
+	// 	super(...args);
+	// }
 
-const UNITS_PER_METER = 20;
-
-class DinoWorld {
-	constructor() {
-		const todaysSeed = PseudoRandomizer.getPseudoRandInt(Number(new Date()), 1000);
-		this.seed = todaysSeed;
-		// Sizes are measured in integer "units"
-		// 20 units = 1m = 100cm
-		// 1 unit = 5cm
-		this.unitsPerMeter = UNITS_PER_METER;
-		// A chunk with size of 128m is roughly the size of ~10 houses.
-		// A collection of 3x3 chunks would be 384m, larger than a nyc city block (274m)
-		this.chunkSizeMeters = 128;
-		this.chunkSize = this.unitsPerMeter * this.chunkSizeMeters; // 2560 units
-		this.halfChunkSize = this.chunkSize / 2;
-		this.terrainSegmentSize = 32; // 10; // (originally 10; 256 works for testing)
-		this.terrainSegmentsPerChunk = this.chunkSize / this.terrainSegmentSize;
-		// Segements: 2560/10 = 256, 2560/20 = 128, 2560/32 = 80, 2560/256 = 10
-		// While the segments break up the chunk into various triangles, each side
-		// of the terrain has +1 vertex compared to the # of segments
-		this.terrainChunkVertexSize = this.terrainSegmentsPerChunk + 1;
-		this.terrainChunksCache = {};
-		this.terrainColor = '#76c379';
+	getTotalParts() { // eslint-disable-line
+		return PARTS.length;
 	}
 
-	validateNumbers(objOfValues, ...args) {
-		Object.keys(objOfValues).forEach((key) => {
-			const n = objOfValues[key];
-			if (typeof n !== 'number' || Number.isNaN(n)) {
-				console.error(args);
-				throw new Error(`${key} is not a number`);
-			}
+	addNewTrees(n, focusCoords) {
+		for (let i = n; i > 0; i -= 1) this.addNewTree(focusCoords);
+	}
+
+	addNewTree(focusCoords) {
+		const coords = this.getRandomSpawnCoords(focusCoords);
+		this.addNewItem({
+			isTree: true,
+			color: Random.pick(['#76c379', '#508d76']),
+			renderAs: 'model',
+			model: 'royalPalm',
+			coords,
+			rooted: true,
 		});
+		// TODO:
+		// Create random tree and find a location
+		// Add a despawnRadius
+		// Then also run this a few more times when a new chunk is loaded
 	}
 
-	static calcNoiseHeight(x, y, noiseScale, altitudeScale = 1) {
-		return altitudeScale * noise.perlin2(noiseScale * x, noiseScale * y);
+	addNewDino(focusCoords) {
+		const coords = this.getRandomSpawnCoords(focusCoords);
+		const [distance] = this.findNearestActor(coords);
+		if (distance < this.spawnActorDistance) return null;
+		// const randColor = () => (0.5 + (Random.random() * 0.5));
+		const dinoKey = Random.pick(Object.keys(dinos));
+		const dinoOpt = dinos[dinoKey];
+		const dino = this.addNewActor(dinoOpt);
+		dino.coords = coords;
+		console.log('Added dino', dino.name, dino.entityId);
+		return dino;
 	}
 
-	calcTerrainHeight(xP, y) {
-		// return 0;
-		const x = xP + 120;
-		const noiseScale = 0.002;
-		// const noiseScale = 0.0002;
-		const minHeight = 0;
-		const maxHeight = 1000;
-		// const delta = maxHeight - minHeight;
-		let h = 100;
-		// Add big heights
-		h += DinoWorld.calcNoiseHeight(x, y, 0.0002, 800);
-		h = clamp(h, minHeight, maxHeight);
-		// Pokey mountains
-		h += DinoWorld.calcNoiseHeight(x, y, 0.002, 600);
-		// const roll = DinoWorld.calcNoiseHeight(x, y, 0.00015, 1);
-		// if (roll)
-		h = clamp(h, minHeight, maxHeight);
-
-		// Add roughness
-		const roughness = (h <= 2) ? 20 : 50 * (h / maxHeight);
-		h += DinoWorld.calcNoiseHeight(x, y, 0.02, roughness);
-
-		// Add ripples (negative for erosion)
-		h -= 20 * (
-			1 + Math.sin(noiseScale * x + 10 * noise.perlin3(noiseScale * x, noiseScale * 2 * y, 0))
-		);
-		h = clamp(h, minHeight, maxHeight);
-		// h += DinoWorld.calcNoiseHeight(x, y, 0.00021, 200);
-		// this.validateNumbers({ h, h2 });
-		return h;
-	}
-
-	getTerrainHeight(x, y) {
-		return this.calcTerrainHeight(x, y);
-	}
-
-	getChunkCoord(n) {
-		this.validateNumbers({ n }, 'getChunkCoord');
-		// const round = (n < 0) ? Math.ceil : Math.floor;
-		return Math.round(n / this.chunkSize);
-	}
-
-	/** Get chunk-level x,y,z coordinates from world x,y,z coordinates */
-	getChunkCoords(coords) {
-		const x = this.getChunkCoord(coords[X]);
-		const y = this.getChunkCoord(coords[Y]);
-		const z = 0; // right now we don't do chunking up/down
-		return [x, y, z];
-	}
-
-	getChunkTopLeftCoords(chunkCoords) {
-		const center = this.getChunkCenterCoords(chunkCoords);
-		return [center[X] - this.halfChunkSize, center[Y] + this.halfChunkSize, 0];
-	}
-
-	getChunkCenterCoords(chunkCoords) {
-		if (!chunkCoords) throw new Error();
-		const centerX = chunkCoords[X] * this.chunkSize;
-		const centerY = chunkCoords[Y] * this.chunkSize;
-		return [centerX, centerY, 0];
-	}
-
-	getChunkId(chunkCoords) {
-		if (!chunkCoords) throw new Error();
-		return `terrain-chunk-${chunkCoords.join(',')}`;
-	}
-
-	makeChunkCanvas(size) {
-		const canvas = document.createElement('canvas');
-		canvas.width = size * 1;
-		canvas.height = size * 1;
-		const ctx = canvas.getContext('2d');
-		return { canvas, ctx };
-	}
-
-	makeTerrainTextureData(topLeft) {
-		const width = 256;
-		const height = 256;
-		const stepSize = this.chunkSize / 256;
-		const data = new Uint8Array(width * height * 4);
-		const setColor = (i, [r, g, b]) => {
-			data[i] = clamp(r, 0, 255);
-			data[i + 1] = clamp(g, 0, 255);
-			data[i + 2] = clamp(b, 0, 255);
-			data[i + 3] = 255;
-		};
-		for (let i = 0; i < data.length; i += 4) {
-			const x = Math.floor(i / 4) % width;
-			const y = Math.floor(i / 4 / width);
-			const [worldX, worldY] = this.convertToWorldXY(x, y, topLeft, stepSize);
-			// ^ This conversion is not working quite right - TODO: Fix this
-			// TODO: Remove * 2 below
-			// TODO: Add in some other noise randomness
-			const h = Math.round(this.calcTerrainHeight(worldX * 2, worldY * 2));
-			let color = LIGHT_GREEN;
-			if (h > 400) {
-				color = DARK_GRAY;
-			} else if (h > 300) {
-				color = (h % 2 === 0) ? DARK_GRAY : TAN;
-			} else if (h > 250) {
-				color = (h % 4 === 0) ? LIGHT_GREEN : TAN;
-			} else if (h > 150) {
-				color = (h % 2 === 0) ? LIGHT_GREEN : TAN;
-			} else if (h > 1) {
-				color = (h % 5 === 0) ? LIGHT_GREEN : DARK_GREEN;
-			}
-			setColor(i, color);
-		}
-		return data;
-	}
-
-	convertToWorldXY(stepX, stepY, topLeft, stepSize) {
-		const worldX = topLeft[X] + (stepX * stepSize);
-		const worldY = topLeft[Y] - (stepY * stepSize);
-		return [worldX, worldY];
-	}
-
-	makeTerrainChunk(chunkCoords) {
-		if (!chunkCoords) throw new Error('makeTerrainChunk missing chunkCoords');
-		const debug = [];
-		const heights = [];
-		const topLeft = this.getChunkTopLeftCoords(chunkCoords);
-		const center = this.getChunkCenterCoords(chunkCoords);
-		const chunkId = this.getChunkId(chunkCoords);
-		const dataSize = this.terrainChunkVertexSize;
-		const { canvas, ctx } = this.makeChunkCanvas(dataSize);
-		// x and y here are steps along the terrain segments, not actual world x,y coordinates
-		let x;
-		let y;
-		for (y = 0; y < dataSize; y += 1) {
-			if (!heights[y]) heights[y] = [];
-			if (!debug[y]) debug[y] = [];
-			for (x = 0; x < dataSize; x += 1) {
-				// Convert the x, y steps to actual world x, y
-				// const convSize = this.terrainSegmentSize;
-				// const worldX = topLeft[X] + (x * convSize);
-				// const worldY = topLeft[Y] - (y * convSize);
-				const [worldX, worldY] = this.convertToWorldXY(x, y, topLeft, this.terrainSegmentSize);
-				this.validateNumbers({ worldX, worldY });
-				const h = this.calcTerrainHeight(worldX, worldY);
-				// if (y === 0) console.log('y = 0', x, h);
-				heights[y][x] = h;
-				// console.log('step x,y', x, y, '--> world', worldX, worldY, 'h', h);
-				// if( x > 10) throw new Error();
-				const hmh = Math.min(Math.max(Math.round(h), 0), 255);
-				ctx.fillStyle = `rgba(${hmh},${hmh},${hmh},1)`;
-				// if (Math.round(worldX) < 1) ctx.fillStyle = `rgba(255,${hmh},${hmh},1)`;
-				// if (Math.round(worldY) < 1) ctx.fillStyle = `rgba(255,255,${hmh},1)`;
-				// ctx.fillStyle = `rgb(${hmh},${hmh},${hmh})`;
-				// ctx.fillRect(x * 2, y * 2, 2, 2);
-				ctx.fillRect(x * 1, y * 1, 1, 1);
-			}
-		}
-		const image = new Image();
-		image.src = canvas.toDataURL();
-		// This is beyond stupid, but the image is somehow not loaded
-		// even though we just created it and populated it synchronously.
-		// So we have to wait for the image to load...
-		// const waitForImage = (img) => (
-		// 	new Promise((resolve, reject) => {
-		// 		img.onload = resolve;
-		// 		img.onerror = reject;
-		// 	})
-		// );
-		// console.log(image.complete);
-		// await waitForImage(image);
-		// console.log(image.complete);
-
-		const textureData = this.makeTerrainTextureData(topLeft);
-
-		// document.getElementById('map').innerHTML = '';
-		// document.getElementById('map').appendChild(image);
-		return {
-			color: this.terrainColor, // (chunkCoords[X] - chunkCoords[Y] === 0) ? 0x55ffbb : 0x66eeaa,
-			// textureImage,
-			textureData,
-			heightMapImage: image,
-			image,
-			heights,
-			entityId: chunkId,
-			center,
-			size: this.chunkSize,
-			segments: this.terrainSegmentsPerChunk,
-			vertexDataSize: dataSize,
-		};
-	}
-
-	addNewTerrainChunk(chunkCoords) {
-		const chunkId = this.getChunkId(chunkCoords);
-		// Get it from cache if its already been created
-		if (this.terrainChunksCache[chunkId]) return this.terrainChunksCache[chunkId];
-		// Otherwise create it
-		const chunk = this.makeTerrainChunk(chunkCoords);
-		// ...and cache it
-		this.terrainChunksCache[chunk.entityId] = chunk;
-		return chunk;
-	}
-
-	makeTerrainChunks(coords, chunkRadius = 1) {
-		if (!coords) throw new Error('Missing coords param');
-		const centerChunkCoords = this.getChunkCoords(coords);
-		// const centerChunk = this.addNewTerrainChunk(centerChunkCoords);
-		// return [centerChunk];
-		const chunks = [];
-		const MAX = Math.round(chunkRadius);
-		const MIN = -MAX;
-		for (let x = MIN; x <= MAX; x += 1) {
-			for (let y = MIN; y <= MAX; y += 1) {
-				const newChunkCoords = ArrayCoords.add(centerChunkCoords, [x, y, 0]);
-				const chunk = this.addNewTerrainChunk(newChunkCoords);
-				chunks.push(chunk);
-			}
-		}
-		return chunks;
+	build(focusCoords) {
+		ITEMS.forEach((itemData) => {
+			this.addNewItem(itemData);
+		});
+		this.addNewTrees(32, focusCoords);
 	}
 }
-
-export default DinoWorld;
