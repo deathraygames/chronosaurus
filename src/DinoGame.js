@@ -85,7 +85,7 @@ class DinoGame extends GenericGame {
 		this.cameraVerticalRotation = HALF_PI;
 		this.timeMachine = null;
 		this.headBop = 0.5;
-		this.testMode = true;
+		// this.testMode = true;
 		this.spawnDinos = true;
 		this.scanResults = []; // Need to cache this so we don't calculate every tick
 	}
